@@ -8,6 +8,7 @@ import {
   Query,
   ParseIntPipe,
   Delete,
+  Param,
 } from '@nestjs/common';
 
 import { ArticuloService } from '../services/articulo.service';
@@ -44,9 +45,9 @@ export class ArticuloController {
   }
 
   /* --------------------------- UPDATE ----------------------------- */
-  @Put('/:id')
+  @Put(':id')
   update(
-    @Query('id', ParseIntPipe) id: number,
+    @Param('id', ParseIntPipe) id: number,
     @Body() data: UpdateArticuloDto,
   ) {
     return this.articuloService.update(id, data);

@@ -21,7 +21,7 @@ export class ArticuloProveedorController {
   /* -------------------------- CREATE ----------------------------- */
   @Post()
   create(@Body() data: CreateArticuloProveedorDto) {
-    return this.service.create(data);
+    return this.service.createDesdeFormulario(data);
   }
 
   /* -------------------------- UPDATE ----------------------------- */
