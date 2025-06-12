@@ -100,9 +100,11 @@ export class ArticuloService {
       );
     }
 
+    // Asignamos los datos del cuerpo
     Object.assign(art, data);
 
-    if (data.proveedorPredeterminadoId) {
+    // Si se envía un proveedor predeterminado, validamos que exista y esté activo
+    if (data.proveedorPredeterminadoId !== undefined) {
       const proveedor = await this.proveedorRepo.findOne({
         where: {
           id: data.proveedorPredeterminadoId,

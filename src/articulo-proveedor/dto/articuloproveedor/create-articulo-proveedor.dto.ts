@@ -1,18 +1,15 @@
-import {
-  IsNumber,
-  IsInt,
-  IsDateString,
-  IsOptional,
-  IsEnum,
-} from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
 import { ModeloInventario } from '../../entities/articulo-proveedor.entity';
 
 export class CreateArticuloProveedorDto {
-  @IsInt()
+  @IsNotEmpty()
   articuloId: number;
 
-  @IsInt()
+  @IsNotEmpty()
   proveedorId: number;
+
+  @IsEnum(ModeloInventario)
+  modeloInventario: ModeloInventario;
 
   @IsNumber()
   costoPedido: number;
@@ -25,8 +22,8 @@ export class CreateArticuloProveedorDto {
 
   @IsOptional()
   @IsInt()
-  tiempoRevision: number;
+  tiempoRevision?: number;
+
   @IsOptional()
-  @IsEnum(ModeloInventario)
-  modeloInvenatario: ModeloInventario;
+  proximaFechaRevision?: Date;
 }

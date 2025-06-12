@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 
 // ENTITIES ----------------------------------------------------------
 import { Proveedor } from '../entities/proveedor.entity';
@@ -14,6 +14,7 @@ import { OrdenCompra } from 'src/orden-compra/entities/orden-compra.entity';
 // DTOs --------------------------------------------------------------
 import { CreateProveedorDto } from '../dto/proveedor/create-proveedor.dto';
 import { UpdateProveedorDto } from '../dto/proveedor/update-proveedor.dto';
+import { ArticuloProveedorService } from './articulo-proveedor.service';
 
 @Injectable()
 export class ProveedorService {
@@ -24,6 +25,10 @@ export class ProveedorService {
 
     @InjectRepository(OrdenCompra)
     private ordenCompraRepository: Repository<OrdenCompra>,
+
+    private readonly articuloProveedorService: ArticuloProveedorService,
+
+    private readonly dataSource: DataSource,
   ) {}
 
   /* ---------------------------- CREATE --------------------------- */
@@ -39,8 +44,39 @@ export class ProveedorService {
       );
     }
 
-    const nuevo = this.proveedorRepository.create(data);
-    return this.proveedorRepository.save(nuevo);
+    return await this.dataSource.transaction(async (manager) => {
+      // Crear proveedor
+      const nuevoProveedor = this.proveedorRepository.create({
+        codigoProveedor: data.codigoProveedor,
+        nombreProveedor: data.nombreProveedor,
+      });
+
+      const proveedorGuardado = await manager
+        .getRepository(Proveedor)
+        .save(nuevoProveedor);
+
+      // Crear relación artículo-proveedor usando el servicio reutilizable
+      await this.articuloProveedorService.create(
+        {
+          articuloId: data.articulo.articuloId,
+          proveedorId: proveedorGuardado.id,
+          modeloInventario: data.articulo.modeloInventario,
+          costoPedido: data.articulo.costoPedido,
+          costoCompraUnitarioArticulo:
+            data.articulo.costoCompraUnitarioArticulo,
+          demoraEntregaProveedor: data.articulo.demoraEntregaProveedor,
+          ...(data.articulo.tiempoRevision !== undefined && {
+            tiempoRevision: data.articulo.tiempoRevision,
+          }),
+          ...(data.articulo.proximaFechaRevision !== undefined && {
+            proximaFechaRevision: data.articulo.proximaFechaRevision,
+          }),
+        },
+        manager, // Se le pasás el manager
+      );
+
+      return proveedorGuardado;
+    });
   }
 
   /* ---------------------------- UPDATE --------------------------- */
@@ -82,7 +118,9 @@ export class ProveedorService {
     const ocActiva = await this.ordenCompraRepository.findOne({
       where: {
         proveedor: { id },
-        estado: { nombreEstadoOrdenCompra: Not(In(['Finalizada', 'Cancelada'])) },
+        estado: {
+          nombreEstadoOrdenCompra: Not(In(['Finalizada', 'Cancelada'])),
+        },
       },
       relations: ['estado', 'proveedor'],
     });
