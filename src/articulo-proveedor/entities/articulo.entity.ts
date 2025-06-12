@@ -2,9 +2,9 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  OneToOne,
   JoinColumn,
   OneToMany,
+  ManyToOne,
 } from 'typeorm';
 import { ArticuloProveedor } from './articulo-proveedor.entity';
 import { Proveedor } from './proveedor.entity';
@@ -54,7 +54,7 @@ export class Articulo {
   fechaBajaArticulo: Date;
 
   // RELACIONES
-  @OneToOne(() => Proveedor)
+  @ManyToOne(() => Proveedor)
   @JoinColumn()
   proveedorPredeterminado: Proveedor;
 

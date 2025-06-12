@@ -31,9 +31,7 @@ import { ArticuloProveedorModule } from 'src/articulo-proveedor/articulo-proveed
     ArticuloProveedorModule,
   ],
   controllers: [OrdenCompraController],
-  providers: [
-    OrdenCompraService,
-    EstadoOrdenCompraService,
-  ],
+  providers: [OrdenCompraService, EstadoOrdenCompraService],
+  exports: [OrdenCompraService],
 })
 export class OrdenCompraModule {}

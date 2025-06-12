@@ -68,8 +68,8 @@ export class OrdenCompraService {
         .innerJoin('orden.estado', 'estado')
         .where('orden.proveedor = :proveedorId', { proveedorId: proveedor.id })
         .andWhere('detalle.articulo = :articuloId', { articuloId: articulo.id })
-        .andWhere('estado.codigoEstadoOrdenCompra = :estado', {
-          estado: 'PENDIENTE',
+        .andWhere('estado.codigoEstadoOrdenCompra IN (:...estados)', {
+          estados: ['PENDIENTE', 'CONFIRMADA'],
         })
         .getOne();
 
@@ -136,7 +136,7 @@ export class OrdenCompraService {
     return this.ordenRepo.save(orden);
   }
 
-  /* ----------------------------- READ ----------------------------- */
+  /* ----------------------------- READ ALL ----------------------------- */
   findAll() {
     return this.ordenRepo.find({
       relations: [
@@ -145,11 +145,15 @@ export class OrdenCompraService {
         'detallesOrden',
         'detallesOrden.articulo',
       ],
+      order: {
+        fechaOrdenCompra: 'DESC', // opcional, para ordenar por fecha descendente
+      },
     });
   }
 
+  /* ----------------------------- READ ONE ----------------------------- */
   async findOne(id: number) {
-    const oc = await this.ordenRepo.findOne({
+    const orden = await this.ordenRepo.findOne({
       where: { id },
       relations: [
         'proveedor',
@@ -158,23 +162,102 @@ export class OrdenCompraService {
         'detallesOrden.articulo',
       ],
     });
-    if (!oc) {
-      throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
+
+    if (!orden) {
+      throw new NotFoundException(`Orden de compra con ID ${id} no encontrada`);
     }
-    return oc;
+
+    return orden;
   }
 
   /* ---------------------------- UPDATE ---------------------------- */
   async update(id: number, dto: UpdateOrdenCompraDto) {
-    const oc = await this.ordenRepo.findOneBy({ id });
+    const oc = await this.ordenRepo.findOne({
+      where: { id },
+      relations: ['proveedor', 'estado', 'detallesOrden'],
+    });
+
     if (!oc) {
       throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
     }
 
-    Object.assign(oc, dto, {
-      proveedor: dto.proveedorId ? { id: dto.proveedorId } : oc.proveedor,
-      estado: dto.estadoId ? { id: dto.estadoId } : oc.estado,
-    });
+    // Buscar proveedor si viene
+    let proveedor = oc.proveedor;
+    if (dto.proveedorId) {
+      const nuevoProveedor = await this.proveedorRepo.findOneBy({
+        id: dto.proveedorId,
+      });
+      if (!nuevoProveedor) {
+        throw new BadRequestException('Proveedor no válido');
+      }
+      proveedor = nuevoProveedor;
+    }
+
+    // Buscar estado si viene
+    let estado = oc.estado;
+    if (dto.estadoId) {
+      const nuevoEstado = await this.estadoRepo.findOneBy({ id: dto.estadoId });
+      if (!nuevoEstado) {
+        throw new BadRequestException('Estado no válido');
+      }
+      estado = nuevoEstado;
+    }
+
+    // Eliminar detalles existentes
+    await this.detalleRepo.delete({ ordenCompra: { id: oc.id } });
+
+    // Volver a cargar nuevos detalles
+    let costoPedidoTotal = 0;
+    let costoCompraTotal = 0;
+    const nuevosDetalles: DetalleOrdenCompra[] = [];
+
+    for (const d of dto.detalles) {
+      const articulo = await this.articuloRepo.findOneBy({ id: d.articuloId });
+      if (!articulo) {
+        throw new NotFoundException(
+          `Artículo con ID ${d.articuloId} no encontrado`,
+        );
+      }
+
+      const artProv = await this.articuloProveedorRepo.findOne({
+        where: {
+          articulo: { id: articulo.id },
+          proveedor: { id: proveedor.id },
+        },
+      });
+
+      if (!artProv) {
+        throw new NotFoundException(
+          `No existe relación Artículo-Proveedor para artículo ${articulo.nombreArticulo} y proveedor ${proveedor.nombreProveedor}`,
+        );
+      }
+
+      const costoCompra = artProv.costoCompraUnitarioArticulo;
+      const costoPedido = artProv.costoPedido;
+
+      const detalle = this.detalleRepo.create({
+        articulo,
+        cantidadArticulo: d.cantidadArticulo,
+        costoCompraUnitarioArticulo: costoCompra,
+        costoPedidoSubtotal: costoPedido,
+        costoCompraSubtotal: d.cantidadArticulo * costoCompra,
+      });
+
+      costoPedidoTotal += costoPedido;
+      costoCompraTotal += detalle.costoCompraSubtotal;
+      nuevosDetalles.push(detalle);
+    }
+
+    // Actualizar campos de la OC
+    oc.fechaOrdenCompra = dto.fechaOrdenCompra
+      ? new Date(dto.fechaOrdenCompra)
+      : oc.fechaOrdenCompra;
+    oc.proveedor = proveedor;
+    oc.estado = estado;
+    oc.detallesOrden = nuevosDetalles;
+    oc.costoPedidoTotal = costoPedidoTotal;
+    oc.costoCompraTotal = costoCompraTotal;
+    oc.costoTotal = costoPedidoTotal + costoCompraTotal;
 
     return this.ordenRepo.save(oc);
   }
