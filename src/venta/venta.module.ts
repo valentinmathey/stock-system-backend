@@ -8,7 +8,6 @@ import { DetalleVenta } from './entities/detalle-venta.entity';
 
 // SERVICES ----------------------------------------------------------
 import { VentaService } from './services/venta.service';
-import { DetalleVentaService } from './services/detalle-venta.service';
 
 // CONTROLLER --------------------------------------------------------
 import { VentaController } from './controllers/venta.controller';
@@ -25,6 +24,6 @@ import { ArticuloProveedorModule } from 'src/articulo-proveedor/articulo-proveed
     ArticuloProveedorModule,
   ],
   controllers: [VentaController],
-  providers: [VentaService, DetalleVentaService],
+  providers: [VentaService],
 })
 export class VentaModule {}

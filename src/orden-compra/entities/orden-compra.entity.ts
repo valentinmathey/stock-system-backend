@@ -14,8 +14,8 @@ export class OrdenCompra {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  codigoOrdenCompra: string;
+  @Column({ generated: 'increment' })
+  codigoOrdenCompra: number;
 
   @Column({ type: 'date' })
   fechaOrdenCompra: Date;

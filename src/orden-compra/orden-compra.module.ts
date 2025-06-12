@@ -10,7 +10,6 @@ import { Articulo } from '../articulo-proveedor/entities/articulo.entity';
 
 // SERVICES ----------------------------------------------------------
 import { OrdenCompraService } from './services/orden-compra.service';
-import { DetalleOrdenCompraService } from './services/detalle-orden-compra.service';
 import { EstadoOrdenCompraService } from './services/estado-orden-compra.service';
 
 // CONTROLLERS -------------------------------------------------------
@@ -34,7 +33,6 @@ import { ArticuloProveedorModule } from 'src/articulo-proveedor/articulo-proveed
   controllers: [OrdenCompraController],
   providers: [
     OrdenCompraService,
-    DetalleOrdenCompraService,
     EstadoOrdenCompraService,
   ],
 })

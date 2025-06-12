@@ -9,13 +9,13 @@ import { Repository } from 'typeorm';
 
 // ENTITIES ----------------------------------------------------------
 import { OrdenCompra } from '../entities/orden-compra.entity';
-import {
-  CreateOrdenCompraDto,
-  CreateDetalleOrdenCompraDto,
-} from '../dto/ordencompra/create-orden-compra.dto';
+import { CreateOrdenCompraDto } from '../dto/ordencompra/create-orden-compra.dto';
 import { UpdateOrdenCompraDto } from '../dto/ordencompra/update-orden-compra.dto';
 import { DetalleOrdenCompra } from '../entities/detalle-orden-compra.entity';
 import { Articulo } from 'src/articulo-proveedor/entities/articulo.entity';
+import { EstadoOrdenCompra } from '../entities/estado-orden-compra.entity';
+import { Proveedor } from 'src/articulo-proveedor/entities/proveedor.entity';
+import { ArticuloProveedor } from 'src/articulo-proveedor/entities/articulo-proveedor.entity';
 
 @Injectable()
 export class OrdenCompraService {
@@ -23,58 +23,117 @@ export class OrdenCompraService {
   constructor(
     @InjectRepository(OrdenCompra)
     private readonly ordenRepo: Repository<OrdenCompra>,
-
     @InjectRepository(DetalleOrdenCompra)
     private readonly detalleRepo: Repository<DetalleOrdenCompra>,
-
     @InjectRepository(Articulo)
     private readonly articuloRepo: Repository<Articulo>,
+    @InjectRepository(EstadoOrdenCompra)
+    private readonly estadoRepo: Repository<EstadoOrdenCompra>,
+    @InjectRepository(Proveedor)
+    private readonly proveedorRepo: Repository<Proveedor>,
+    @InjectRepository(ArticuloProveedor)
+    private readonly articuloProveedorRepo: Repository<ArticuloProveedor>,
   ) {}
 
   /* ---------------------------- CREATE ---------------------------- */
   async create(data: CreateOrdenCompraDto) {
-    if (!data.detalles?.length) {
-      throw new BadRequestException('Debes incluir al menos un detalle');
+    // Validar proveedor
+    const proveedor = await this.proveedorRepo.findOneBy({
+      id: data.proveedorId,
+    });
+    if (!proveedor) {
+      throw new BadRequestException('Proveedor no válido');
     }
 
-    /* 1️⃣  Persistir cabecera sin detalles */
-    const oc = this.ordenRepo.create({
-      codigoOrdenCompra: data.codigoOrdenCompra,
-      fechaOrdenCompra: new Date(data.fechaOrdenCompra),
-      costoPedidoTotal: data.costoPedidoTotal,
-      costoCompraTotal: data.costoCompraTotal,
-      costoTotal: data.costoTotal,
-      proveedor: { id: data.proveedorId },
-      estado: { id: data.estadoId },
+    // Validar estado inicial
+    const estadoInicial = await this.estadoRepo.findOneBy({
+      codigoEstadoOrdenCompra: 'PENDIENTE',
     });
-    const savedOC = await this.ordenRepo.save(oc);
+    if (!estadoInicial) {
+      throw new BadRequestException('Estado inicial "PENDIENTE" no encontrado');
+    }
 
-    /* 2️⃣  Construir cada detalle validando existencia de artículo */
+    // VALIDAR EXISTENCIA DE ORDEN PENDIENTE PARA ALGÚN ARTÍCULO
+    for (const d of data.detalles) {
+      const articulo = await this.articuloRepo.findOneBy({ id: d.articuloId });
+      if (!articulo) {
+        throw new NotFoundException(
+          `Artículo con ID ${d.articuloId} no encontrado`,
+        );
+      }
+
+      const ordenExistente = await this.ordenRepo
+        .createQueryBuilder('orden')
+        .innerJoin('orden.detallesOrden', 'detalle')
+        .innerJoin('orden.estado', 'estado')
+        .where('orden.proveedor = :proveedorId', { proveedorId: proveedor.id })
+        .andWhere('detalle.articulo = :articuloId', { articuloId: articulo.id })
+        .andWhere('estado.codigoEstadoOrdenCompra = :estado', {
+          estado: 'PENDIENTE',
+        })
+        .getOne();
+
+      if (ordenExistente) {
+        throw new BadRequestException(
+          `Ya existe una orden de compra pendiente para el artículo ${articulo.nombreArticulo} con este proveedor.`,
+        );
+      }
+    }
+
+    const orden = this.ordenRepo.create({
+      proveedor,
+      estado: estadoInicial,
+      fechaOrdenCompra: new Date(data.fechaOrdenCompra),
+    });
+
+    let costoPedidoTotal = 0;
+    let costoCompraTotal = 0;
     const detalles: DetalleOrdenCompra[] = [];
 
     for (const d of data.detalles) {
       const articulo = await this.articuloRepo.findOneBy({ id: d.articuloId });
       if (!articulo) {
-        throw new BadRequestException(
-          `Artículo con ID ${d.articuloId} no existe`,
+        throw new NotFoundException(
+          `Artículo con ID ${d.articuloId} no encontrado`,
         );
       }
 
-      detalles.push(
-        this.detalleRepo.create({
-          ordenCompra: savedOC,
-          articulo,
-          cantidadArticulo: d.cantidadArticulo,
-          costoCompraUnitarioArticulo: d.costoCompraUnitarioArticulo,
-          costoPedidoSubtotal: d.costoPedidoSubtotal,
-          costoCompraSubtotal: d.costoCompraSubtotal,
-        }),
-      );
+      // Buscar el registro ArticuloProveedor
+      const artProv = await this.articuloProveedorRepo.findOne({
+        where: {
+          articulo: { id: articulo.id },
+          proveedor: { id: proveedor.id },
+        },
+      });
+
+      if (!artProv) {
+        throw new NotFoundException(
+          `No existe relación Articulo-Proveedor para artículo ${articulo.nombreArticulo} y proveedor ${proveedor.nombreProveedor}`,
+        );
+      }
+
+      const costoCompra = artProv.costoCompraUnitarioArticulo;
+      const costoPedido = artProv.costoPedido;
+
+      const detalle = this.detalleRepo.create({
+        articulo,
+        cantidadArticulo: d.cantidadArticulo,
+        costoCompraUnitarioArticulo: costoCompra,
+        costoPedidoSubtotal: costoPedido,
+        costoCompraSubtotal: d.cantidadArticulo * costoCompra,
+      });
+
+      costoPedidoTotal += costoPedido;
+      costoCompraTotal += detalle.costoCompraSubtotal;
+      detalles.push(detalle);
     }
 
-    /* 3️⃣  Guardar detalles en bloque y devolver OC completa */
-    await this.detalleRepo.save(detalles);
-    return this.findOne(savedOC.id);
+    orden.detallesOrden = detalles;
+    orden.costoPedidoTotal = costoPedidoTotal;
+    orden.costoCompraTotal = costoCompraTotal;
+    orden.costoTotal = costoPedidoTotal + costoCompraTotal;
+
+    return this.ordenRepo.save(orden);
   }
 
   /* ----------------------------- READ ----------------------------- */
