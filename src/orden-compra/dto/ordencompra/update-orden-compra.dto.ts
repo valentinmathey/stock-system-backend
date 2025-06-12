@@ -1,10 +1,14 @@
 import {
-  IsOptional,
-  IsString,
-  IsDateString,
-  IsNumber,
+  IsArray,
+  ValidateNested,
   IsInt,
+  IsDateString,
+  IsOptional,
+  ArrayMinSize,
+  IsString,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { UpdateDetalleOrdenCompraDto } from '../detalleordencompra/update-detalle-orden-compra.dto';
 
 export class UpdateOrdenCompraDto {
   @IsOptional()
@@ -16,22 +20,16 @@ export class UpdateOrdenCompraDto {
   fechaOrdenCompra?: string;
 
   @IsOptional()
-  @IsNumber()
-  costoPedidoTotal?: number;
-
-  @IsOptional()
-  @IsNumber()
-  costoCompraTotal?: number;
-
-  @IsOptional()
-  @IsNumber()
-  costoTotal?: number;
-
-  @IsOptional()
   @IsInt()
   proveedorId?: number;
 
   @IsOptional()
   @IsInt()
   estadoId?: number;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => UpdateDetalleOrdenCompraDto)
+  detalles: UpdateDetalleOrdenCompraDto[];
 }

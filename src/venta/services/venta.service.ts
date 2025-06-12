@@ -15,6 +15,11 @@ import { Articulo } from 'src/articulo-proveedor/entities/articulo.entity';
 // DTOs --------------------------------------------------------------
 import { CreateVentaDto } from '../dto/venta/create-venta.dto';
 import { UpdateVentaDto } from '../dto/venta/update-venta.dto';
+import { ArticuloProveedor } from 'src/articulo-proveedor/entities/articulo-proveedor.entity';
+import { OrdenCompra } from 'src/orden-compra/entities/orden-compra.entity';
+import { CreateOrdenCompraDto } from 'src/orden-compra/dto/ordencompra/create-orden-compra.dto';
+import { OrdenCompraService } from 'src/orden-compra/services/orden-compra.service';
+import { EstadoOrdenCompra } from 'src/orden-compra/entities/estado-orden-compra.entity';
 
 @Injectable()
 export class VentaService {
@@ -28,16 +33,25 @@ export class VentaService {
 
     @InjectRepository(Articulo)
     private readonly articuloRepository: Repository<Articulo>,
+
+    @InjectRepository(ArticuloProveedor)
+    private readonly articuloProveedorRepo: Repository<ArticuloProveedor>,
+
+    @InjectRepository(OrdenCompra)
+    private readonly ordenCompraRepo: Repository<OrdenCompra>,
+
+    // Servicio para reusar lógica de creación de OC
+    private readonly ordenCompraService: OrdenCompraService,
   ) {}
 
   /* ---------------------------- CREATE --------------------------- */
   async create(data: CreateVentaDto) {
-    // Validación mínima: al menos un artículo
+    // Validación inicial: debe haber al menos un detalle
     if (!data.detalle?.length) {
       throw new BadRequestException('Por favor enviar los artículos a vender');
     }
 
-    // Verificar que no haya artículos repetidos
+    // Evitar artículos repetidos en la venta
     const ids = data.detalle.map((d) => d.articuloId);
     const repetidos = ids.filter((id, index) => ids.indexOf(id) !== index);
     if (repetidos.length) {
@@ -46,18 +60,25 @@ export class VentaService {
       );
     }
 
-    // Crear cabecera de venta
+    // Crear cabecera de venta con fecha (si se pasó)
     const venta = this.ventaRepository.create({
       fechaVenta: data.fechaVenta ? new Date(data.fechaVenta) : undefined,
     });
 
-    // Procesar detalles y calcular total
     let total = 0;
     const detalles: DetalleVenta[] = [];
 
+    // Mapa para agrupar artículos que requieren OC por proveedor
+    const articulosParaOC = new Map<
+      number,
+      { articulo: Articulo; cantidad: number }[]
+    >();
+
     for (const d of data.detalle) {
-      const articulo = await this.articuloRepository.findOneBy({
-        id: d.articuloId,
+      // Buscar artículo y cargar relaciones necesarias
+      const articulo = await this.articuloRepository.findOne({
+        where: { id: d.articuloId },
+        relations: ['proveedorPredeterminado', 'articulosProveedor'],
       });
 
       if (!articulo) {
@@ -66,28 +87,30 @@ export class VentaService {
         );
       }
 
-      // Verificar si está dado de baja
+      // No permitir venta de artículos dados de baja
       if (articulo.fechaBajaArticulo) {
         throw new BadRequestException(
           `El artículo ${articulo.nombreArticulo} está dado de baja`,
         );
       }
 
-      // Verificar stock disponible
+      // Verificar stock suficiente
       if (articulo.stockActual < d.cantidadArticulo) {
         throw new BadRequestException(
           `Stock insuficiente para el artículo ${articulo.nombreArticulo}`,
         );
       }
 
+      // Calcular subtotal y acumular
       const subtotal =
         d.cantidadArticulo * articulo.precioVentaUnitarioArticulo;
       total += subtotal;
 
-      // Restar stock
+      // Restar stock actual y guardar
       articulo.stockActual -= d.cantidadArticulo;
       await this.articuloRepository.save(articulo);
 
+      // Crear detalle de venta
       detalles.push(
         this.ventaDetalleRepository.create({
           articulo,
@@ -96,13 +119,64 @@ export class VentaService {
           ventaSubtotal: subtotal,
         }),
       );
+
+      // Evaluar si debe dispararse una OC automática
+      const artProv = await this.articuloProveedorRepo.findOne({
+        where: {
+          articulo: { id: articulo.id },
+          proveedor: { id: articulo.proveedorPredeterminado?.id },
+        },
+      });
+
+      // Si es LOTE_FIJO y bajó al PP, se evalúa si necesita OC
+      if (
+        artProv?.modeloInventario === 'LOTE_FIJO' &&
+        articulo.stockActual <= articulo.puntoPedido
+      ) {
+        const existeOC = await this.ordenCompraRepo
+          .createQueryBuilder('orden')
+          .innerJoin('orden.detallesOrden', 'detalle')
+          .innerJoin('orden.estado', 'estado')
+          .where('detalle.articulo = :articuloId', { articuloId: articulo.id })
+          .andWhere('estado.codigoEstadoOrdenCompra IN (:...estados)', {
+            estados: ['PENDIENTE', 'CONFIRMADA'],
+          })
+          .getOne();
+
+        // Si no hay OC activa y tiene proveedor predeterminado, se agrupa para crear OC luego
+        if (!existeOC && articulo.proveedorPredeterminado) {
+          const provId = articulo.proveedorPredeterminado.id;
+          if (!articulosParaOC.has(provId)) {
+            articulosParaOC.set(provId, []);
+          }
+          articulosParaOC.get(provId)!.push({
+            articulo,
+            cantidad: articulo.loteOptimo,
+          });
+        }
+      }
     }
 
+    // Asignar detalles a la venta y guardar
     venta.detallesVenta = detalles;
     venta.ventaTotal = total;
+    await this.ventaRepository.save(venta);
 
-    // Guardar venta completa con sus detalles
-    return this.ventaRepository.save(venta);
+    // Crear OC por cada proveedor que lo necesite, usando el servicio centralizado
+    for (const [provId, articulos] of articulosParaOC.entries()) {
+      const dto: CreateOrdenCompraDto = {
+        proveedorId: provId,
+        fechaOrdenCompra: new Date().toISOString().split('T')[0],
+        detalles: articulos.map((item) => ({
+          articuloId: item.articulo.id,
+          cantidadArticulo: item.articulo.loteOptimo,
+        })),
+      };
+
+      await this.ordenCompraService.create(dto);
+    }
+
+    return venta;
   }
 
   /* ----------------------------- READ ---------------------------- */
