@@ -15,24 +15,23 @@ import { UpdateOrdenCompraDto } from '../dto/ordencompra/update-orden-compra.dto
 
 @Controller('ordenes-compra')
 export class OrdenCompraController {
-  /* DI --------------------------- */
-  constructor(private readonly service: OrdenCompraService) {}
+  constructor(private readonly ordenCompraService: OrdenCompraService) {}
 
   /* -------------------------- CREATE ----------------------------- */
   @Post()
   create(@Body() dto: CreateOrdenCompraDto) {
-    return this.service.create(dto);
+    return this.ordenCompraService.create(dto);
   }
 
   /* --------------------------- READ ------------------------------ */
   @Get()
   findAll() {
-    return this.service.findAll();
+    return this.ordenCompraService.findAll();
   }
 
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findOne(id);
+    return this.ordenCompraService.findOne(id);
   }
 
   /* -------------------------- UPDATE ----------------------------- */
@@ -41,12 +40,12 @@ export class OrdenCompraController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOrdenCompraDto,
   ) {
-    return this.service.update(id, dto);
+    return this.ordenCompraService.update(id, dto);
   }
 
   /* -------------------------- DELETE ----------------------------- */
   @Delete(':id')
   delete(@Param('id', ParseIntPipe) id: number) {
-    return this.service.delete(id);
+    return this.ordenCompraService.delete(id);
   }
 }

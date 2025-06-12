@@ -1,5 +1,9 @@
 // DEPENDENCIES ------------------------------------------------------
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -28,28 +32,61 @@ export class VentaService {
 
   /* ---------------------------- CREATE --------------------------- */
   async create(data: CreateVentaDto) {
-    // Validación mínima ----------------------------------------------------
+    // Validación mínima: al menos un artículo
     if (!data.detalle?.length) {
       throw new BadRequestException('Por favor enviar los artículos a vender');
     }
 
-    // 1️⃣  Cabecera de venta ------------------------------------------------
+    // Verificar que no haya artículos repetidos
+    const ids = data.detalle.map((d) => d.articuloId);
+    const repetidos = ids.filter((id, index) => ids.indexOf(id) !== index);
+    if (repetidos.length) {
+      throw new BadRequestException(
+        'Hay artículos repetidos en el detalle de la venta',
+      );
+    }
+
+    // Crear cabecera de venta
     const venta = this.ventaRepository.create({
       fechaVenta: data.fechaVenta ? new Date(data.fechaVenta) : undefined,
     });
 
-    // 2️⃣  Procesar detalles y calcular total ------------------------------
+    // Procesar detalles y calcular total
     let total = 0;
     const detalles: DetalleVenta[] = [];
 
     for (const d of data.detalle) {
-      const articulo = await this.articuloRepository.findOneBy({ id: d.articuloId });
+      const articulo = await this.articuloRepository.findOneBy({
+        id: d.articuloId,
+      });
+
       if (!articulo) {
-        throw new BadRequestException(`Artículo con ID ${d.articuloId} no existe`);
+        throw new BadRequestException(
+          `Artículo con ID ${d.articuloId} no existe`,
+        );
       }
 
-      const subtotal = d.cantidadArticulo * articulo.precioVentaUnitarioArticulo;
+      // Verificar si está dado de baja
+      if (articulo.fechaBajaArticulo) {
+        throw new BadRequestException(
+          `El artículo ${articulo.nombreArticulo} está dado de baja`,
+        );
+      }
+
+      // Verificar stock disponible
+      if (articulo.stockActual < d.cantidadArticulo) {
+        throw new BadRequestException(
+          `Stock insuficiente para el artículo ${articulo.nombreArticulo}`,
+        );
+      }
+
+      const subtotal =
+        d.cantidadArticulo * articulo.precioVentaUnitarioArticulo;
       total += subtotal;
+
+      // Restar stock
+      articulo.stockActual -= d.cantidadArticulo;
+      await this.articuloRepository.save(articulo);
 
       detalles.push(
         this.ventaDetalleRepository.create({
@@ -64,13 +101,15 @@ export class VentaService {
     venta.detallesVenta = detalles;
     venta.ventaTotal = total;
 
-    // 3️⃣  Persistir venta completa ----------------------------------------
+    // Guardar venta completa con sus detalles
     return this.ventaRepository.save(venta);
   }
 
   /* ----------------------------- READ ---------------------------- */
   findAll() {
-    return this.ventaRepository.find({ relations: ['detallesVenta', 'detallesVenta.articulo'] });
+    return this.ventaRepository.find({
+      relations: ['detallesVenta', 'detallesVenta.articulo'],
+    });
   }
 
   async findOne(id: number) {

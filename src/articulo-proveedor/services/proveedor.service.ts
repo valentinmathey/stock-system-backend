@@ -17,7 +17,7 @@ import { UpdateProveedorDto } from '../dto/proveedor/update-proveedor.dto';
 
 @Injectable()
 export class ProveedorService {
-  /* Repositorios inyectados --------------------------------------- */
+  /* Repositorios --------------------------------------- */
   constructor(
     @InjectRepository(Proveedor)
     private proveedorRepository: Repository<Proveedor>,
