@@ -8,7 +8,7 @@ import {
 import { Articulo } from 'src/articulo-proveedor/entities/articulo.entity';
 import { CreateOrdenCompraDto } from 'src/orden-compra/dto/ordencompra/create-orden-compra.dto';
 import { OrdenCompraService } from 'src/orden-compra/services/orden-compra.service';
-import { Raw, Repository } from 'typeorm';
+import { EntityManager, Raw, Repository } from 'typeorm';
 
 @Injectable()
 export class InventarioService {
@@ -117,11 +117,14 @@ export class InventarioService {
   /**
    * @description Le pasamos articulos y si están bajo el Punto de Pedido, generamos OC.
    */
-  public async evaluarYPedirLoteFijo(articulos: Articulo[]) {
+  public async evaluarYPedirLoteFijo(
+    articulos: Articulo[],
+    manager?: EntityManager,
+  ) {
     const articuloAPedir = (
       await Promise.all(
         articulos.map(async (articulo) => {
-          if (await this.hayQuePedirLoteFijo(articulo)) {
+          if (await this.hayQuePedirLoteFijo(articulo, manager)) {
             return articulo;
           }
         }),
@@ -132,32 +135,47 @@ export class InventarioService {
       console.log('Los articulos evaluados no necesitan OC');
       return;
     }
-    await this.generarPedido(articulos, ModeloInventario.LOTE_FIJO);
+
+    await this.generarPedido(
+      articuloAPedir,
+      ModeloInventario.LOTE_FIJO,
+      manager,
+    );
   }
-  public async hayQuePedirLoteFijo(articulo: Articulo) {
-    const artProv = await this.articuloProveedorRepo.findOne({
+
+  public async hayQuePedirLoteFijo(
+    articulo: Articulo,
+    manager?: EntityManager,
+  ) {
+    const artProvRepo = manager
+      ? manager.getRepository(ArticuloProveedor)
+      : this.articuloProveedorRepo;
+
+    const artProv = await artProvRepo.findOne({
       where: {
         articulo: { id: articulo.id },
         proveedor: { id: articulo.proveedorPredeterminado?.id },
       },
     });
+
     if (!artProv) {
       throw new InternalServerErrorException(
         'El articulo no tiene instancia de articuloProveedor para el proveedor determinado',
       );
     }
+
     if (artProv.modeloInventario !== ModeloInventario.LOTE_FIJO) return;
 
     const articulosEnCamino =
       await this.ordenCompraService.getCantidadPendiente(articulo);
+    const posicionInventario = articulo.stockActual + articulosEnCamino;
 
-    const posicionInvenatario = articulo.stockActual + articulosEnCamino;
     if (!articulo.puntoPedido) {
-      const msg = `Articulo conm modelo inventario ${ModeloInventario.TIEMPO_FIJO} sin punto pedido calculado`;
-      console.log(msg);
+      const msg = `Articulo con modelo de inventario ${ModeloInventario.TIEMPO_FIJO} sin punto de pedido calculado`;
       throw new InternalServerErrorException(msg);
     }
-    return posicionInvenatario <= articulo.puntoPedido;
+
+    return posicionInventario <= articulo.puntoPedido;
   }
 
   // --------- MODELO PEDIDO FIJO
@@ -171,6 +189,7 @@ export class InventarioService {
   private async generarPedido(
     articulos: Articulo[],
     modeloInventario: ModeloInventario,
+    manager?: EntityManager,
   ) {
     const sonLoteFijo = modeloInventario === ModeloInventario.LOTE_FIJO;
 
@@ -186,28 +205,22 @@ export class InventarioService {
       const provId = articulo.proveedorPredeterminado.id;
       if (sonLoteFijo && !articulo.loteOptimo) {
         throw new InternalServerErrorException(
-          `Lote Optimo no existente o igual a cero para el articulo ${articulo.id} ${articulo.nombreArticulo}`,
+          `Lote Óptimo no existente o igual a cero para el artículo ${articulo.id} ${articulo.nombreArticulo}`,
         );
       }
 
-      let cantidad: number;
-      if (sonLoteFijo && articulo.loteOptimo) {
-        cantidad = articulo.loteOptimo;
-      } else {
-        cantidad = Math.abs(articulo.stockActual - articulo.stockSeguridad);
-      }
+      const cantidad =
+        sonLoteFijo && articulo.loteOptimo
+          ? articulo.loteOptimo
+          : Math.abs(articulo.stockActual - articulo.stockSeguridad);
 
       if (!articulosParaOC.has(provId)) {
         articulosParaOC.set(provId, [{ articulo, cantidad }]);
       } else {
-        articulosParaOC.get(provId)!.push({
-          articulo,
-          cantidad,
-        });
+        articulosParaOC.get(provId)!.push({ articulo, cantidad });
       }
     });
 
-    // Crear OC por cada proveedor que lo necesite,
     for (const [provId, articulos] of articulosParaOC.entries()) {
       const dto: CreateOrdenCompraDto = {
         proveedorId: provId,
@@ -217,7 +230,16 @@ export class InventarioService {
           cantidadArticulo: item.cantidad,
         })),
       };
-      await this.ordenCompraService.create(dto);
+
+      // Ejecutar dentro de transacción si hay manager
+      if (manager) {
+        const ordenCompraService =
+          manager.getCustomRepository?.(OrdenCompraService) ||
+          this.ordenCompraService;
+        await ordenCompraService.create(dto);
+      } else {
+        await this.ordenCompraService.create(dto);
+      }
     }
   }
 }

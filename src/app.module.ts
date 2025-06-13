@@ -8,6 +8,7 @@ import { ArticuloProveedorModule } from './articulo-proveedor/articulo-proveedor
 import { OrdenCompraModule } from './orden-compra/orden-compra.module';
 import { VentaModule } from './venta/venta.module';
 import { LoggerMiddleware } from './logging.middleware';
+import { InventarioModule } from './inventario/inventario.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { LoggerMiddleware } from './logging.middleware';
     ArticuloProveedorModule,
     OrdenCompraModule,
     VentaModule,
+    InventarioModule
   ],
   controllers: [AppController],
   providers: [AppService],
