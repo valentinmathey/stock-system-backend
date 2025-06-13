@@ -14,13 +14,13 @@ import { VentaController } from './controllers/venta.controller';
 
 // MODULE DEPENDENCIES ----------------------------------------------
 import { ArticuloProveedorModule } from 'src/articulo-proveedor/articulo-proveedor.module';
-import { OrdenCompraModule } from 'src/orden-compra/orden-compra.module';
+import { InventarioModule } from 'src/inventario/inventario.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Venta, DetalleVenta]),
     ArticuloProveedorModule,
-    OrdenCompraModule,
+    InventarioModule,
   ],
   controllers: [VentaController],
   providers: [VentaService],
