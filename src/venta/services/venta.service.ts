@@ -29,12 +29,10 @@ export class VentaService {
 
   /* ---------------------------- CREATE --------------------------- */
   async create(data: CreateVentaDto) {
-    // Validación inicial: debe haber al menos un detalle
     if (!data.detalle?.length) {
       throw new BadRequestException('Por favor enviar los artículos a vender');
     }
 
-    // Evitar artículos repetidos en la venta
     const ids = data.detalle.map((d) => d.articuloId);
     const repetidos = ids.filter((id, index) => ids.indexOf(id) !== index);
     if (repetidos.length) {
@@ -42,21 +40,19 @@ export class VentaService {
         'Hay artículos repetidos en el detalle de la venta',
       );
     }
+
     try {
       const venta = await this.dataSource.transaction(async (manager) => {
-        // Repositorios transaccionales
         const ventaRepo = manager.getRepository(Venta);
         const articuloRepo = manager.getRepository(Articulo);
         const detalleRepo = manager.getRepository(DetalleVenta);
 
-        // Crear cabecera de venta con fecha (si se pasó)
         const venta = ventaRepo.create({
           fechaVenta: data.fechaVenta ? new Date(data.fechaVenta) : undefined,
         });
 
         const detalles = await Promise.all(
           data.detalle.map(async (d) => {
-            // Buscar artículo y cargar relaciones necesarias
             const articulo = await articuloRepo.findOne({
               where: { id: d.articuloId },
             });
@@ -66,27 +62,23 @@ export class VentaService {
                 `Artículo con ID ${d.articuloId} no existe`,
               );
             }
-            // No permitir venta de artículos dados de baja
             if (articulo.fechaBajaArticulo) {
               throw new BadRequestException(
                 `El artículo ${articulo.nombreArticulo} está dado de baja`,
               );
             }
-            // Verificar stock suficiente
             if (articulo.stockActual < d.cantidadArticulo) {
               throw new BadRequestException(
                 `Stock insuficiente para el artículo ${articulo.nombreArticulo}`,
               );
             }
 
+            articulo.stockActual -= d.cantidadArticulo;
+            await articuloRepo.save(articulo);
+
             const subtotal =
               d.cantidadArticulo * articulo.precioVentaUnitarioArticulo;
 
-            articulo.stockActual -= d.cantidadArticulo;
-
-            await articuloRepo.save(articulo);
-
-            // Crear detalle de venta
             return detalleRepo.create({
               articulo,
               cantidadArticulo: d.cantidadArticulo,
@@ -96,24 +88,27 @@ export class VentaService {
           }),
         );
 
-        venta.detallesVenta = detalles;
+        const detallesGuardados = await detalleRepo.save(detalles);
+        venta.detallesVenta = detallesGuardados;
+        venta.ventaTotal = this.getTotal(detallesGuardados);
 
-        venta.ventaTotal = this.getTotal(detalles);
+        // Lógica de OC dentro de la transacción para rollback si falla
+        await this.inventarioService.evaluarYPedirLoteFijo(
+          detallesGuardados.map((detalle) => detalle.articulo),
+          manager,
+        );
 
         return await ventaRepo.save(venta);
       });
 
-      await this.inventarioService.evaluarYPedirLoteFijo(
-        venta.detallesVenta.map((detalle) => detalle.articulo),
-      );
-
       return venta;
     } catch (error) {
+      console.error('ERROR DETECTADO EN VENTA:', error);
       if (error instanceof BadRequestException) {
         throw error;
       }
       throw new InternalServerErrorException(
-        'Ha habido un error inesperado al generar la venta. Si el problema persiste, contacte con soporte',
+        'Hubo un error inesperado al generar la venta. Si el problema persiste, contacte con soporte',
       );
     }
   }
