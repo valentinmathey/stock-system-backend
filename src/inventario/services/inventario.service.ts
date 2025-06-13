@@ -184,7 +184,7 @@ export class InventarioService {
 
     articulos.forEach((articulo) => {
       const provId = articulo.proveedorPredeterminado.id;
-      if (sonLoteFijo && (!articulo.loteOptimo || articulo.loteOptimo === 0)) {
+      if (sonLoteFijo && !articulo.loteOptimo) {
         throw new InternalServerErrorException(
           `Lote Optimo no existente o igual a cero para el articulo ${articulo.id} ${articulo.nombreArticulo}`,
         );
