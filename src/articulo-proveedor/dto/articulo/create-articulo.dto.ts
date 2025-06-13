@@ -30,14 +30,17 @@ export class CreateArticuloDto {
   @IsInt()
   stockSeguridad: number;
 
+  @IsOptional()
   @IsNumber()
-  cgi: number;
+  cgi?: number;
 
+  @IsOptional()
   @IsInt()
-  loteOptimo: number;
+  loteOptimo?: number;
 
+  @IsOptional()
   @IsInt()
-  puntoPedido: number;
+  puntoPedido?: number;
 
   @IsInt()
   inventarioMaximo: number;

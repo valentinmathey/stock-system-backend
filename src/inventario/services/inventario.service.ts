@@ -81,10 +81,10 @@ export class InventarioService {
     }
     const demanda = articulo.demandaAnual;
     const costoUnidad = artProv.costoCompraUnitarioArticulo;
-    const loteOptimo = articulo.loteOptimo;
+    const loteOptimo = articulo.loteOptimo ?? 0;
     if (loteOptimo <= 0) {
       throw new InternalServerErrorException(
-        'No se puede calcular el CT con lote optimo igual a 0',
+        'No se puede calcular el CT con lote optimo igual a 0 o nulo',
       );
     }
     const costoPedido = artProv.costoPedido;
@@ -152,6 +152,11 @@ export class InventarioService {
       await this.ordenCompraService.getCantidadPendiente(articulo);
 
     const posicionInvenatario = articulo.stockActual + articulosEnCamino;
+    if (!articulo.puntoPedido) {
+      const msg = `Articulo conm modelo inventario ${ModeloInventario.TIEMPO_FIJO} sin punto pedido calculado`;
+      console.log(msg);
+      throw new InternalServerErrorException(msg);
+    }
     return posicionInvenatario <= articulo.puntoPedido;
   }
 
@@ -179,9 +184,18 @@ export class InventarioService {
 
     articulos.forEach((articulo) => {
       const provId = articulo.proveedorPredeterminado.id;
-      const cantidad = sonLoteFijo
-        ? articulo.loteOptimo
-        : Math.abs(articulo.stockActual - articulo.stockSeguridad);
+      if (sonLoteFijo && (!articulo.loteOptimo || articulo.loteOptimo === 0)) {
+        throw new InternalServerErrorException(
+          `Lote Optimo no existente o igual a cero para el articulo ${articulo.id} ${articulo.nombreArticulo}`,
+        );
+      }
+
+      let cantidad: number;
+      if (sonLoteFijo && articulo.loteOptimo) {
+        cantidad = articulo.loteOptimo;
+      } else {
+        cantidad = Math.abs(articulo.stockActual - articulo.stockSeguridad);
+      }
 
       if (!articulosParaOC.has(provId)) {
         articulosParaOC.set(provId, [{ articulo, cantidad }]);

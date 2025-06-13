@@ -35,14 +35,14 @@ export class Articulo {
   @Column('int')
   stockSeguridad: number;
 
-  @Column('double precision')
-  cgi: number;
+  @Column('double precision', { nullable: true })
+  cgi: number | null;
 
-  @Column('int')
-  loteOptimo: number;
+  @Column('int', { nullable: true })
+  loteOptimo: number | null;
 
-  @Column('int')
-  puntoPedido: number;
+  @Column('int', { nullable: true })
+  puntoPedido: number | null;
 
   @Column('int')
   inventarioMaximo: number;
