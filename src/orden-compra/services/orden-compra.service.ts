@@ -2,6 +2,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -270,5 +271,40 @@ export class OrdenCompraService {
     }
     oc.fechaBajaOrdenCompra = new Date();
     return this.ordenRepo.save(oc);
+  }
+
+  public async getOrdenesDeCompraPendientesOEnviadas(articulo: Articulo) {
+    const ordenCompraPendiente = await this.estadoRepo.findOne({
+      where: { nombreEstadoOrdenCompra: 'PENDIENTE' },
+    });
+    if (!ordenCompraPendiente) throw new InternalServerErrorException();
+
+    const oc = await this.ordenRepo
+      .createQueryBuilder()
+      .innerJoin('orden.estado', 'estado')
+      .innerJoin('orden.detallesOrden', 'detalle')
+      .innerJoin('detalle.articulo', 'articulo')
+      .where('estado.id = :estadoId', { estadoId: ordenCompraPendiente.id })
+      .andWhere('estado.nombreEstadoOrdenCompra IN (:...estados)', {
+        estados: ['PENDIENTE', 'ENVIADA'],
+      })
+      .andWhere('articulo.id = :articuloId', { articuloId: articulo.id })
+      .getMany();
+    return oc;
+  }
+
+  public async getCantidadPendiente(articulo: Articulo) {
+    const ordenesPendientes =
+      await this.getOrdenesDeCompraPendientesOEnviadas(articulo);
+    const articulosPendientes = ordenesPendientes.reduce((prev, curr) => {
+      const detalleArticulo = curr.detallesOrden.find(
+        (detalle) => (detalle.articulo.id = articulo.id),
+      );
+      if (!detalleArticulo) {
+        return prev;
+      }
+      return prev + detalleArticulo.cantidadArticulo;
+    }, 0);
+    return articulosPendientes;
   }
 }
