@@ -1,6 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
+import { log } from 'console';
 import {
   ArticuloProveedor,
   ModeloInventario,
@@ -22,6 +23,10 @@ export class InventarioService {
 
   // Calcula el punto de pedido basado en la demanda y el tiempo de entrega
   async calcularPuntoPedido(articulo: Articulo): Promise<number> {
+    if (!articulo.proveedorPredeterminado) {
+      console.log('No hay proveedor predeterminado');
+      return 0;
+    }
     const artProv = await this.articuloProveedorRepo.findOne({
       where: {
         articulo: { id: articulo.id },
@@ -45,6 +50,10 @@ export class InventarioService {
   }
 
   async calcularLoteOptimo(articulo: Articulo): Promise<number> {
+    if (!articulo.proveedorPredeterminado) {
+      console.log('No hay proveedor predeterminado');
+      return 0;
+    }
     const artProv = await this.articuloProveedorRepo.findOne({
       where: {
         articulo: { id: articulo.id },
@@ -68,6 +77,9 @@ export class InventarioService {
   }
 
   async calcularCostoTotal(articulo: Articulo) {
+    if (!articulo.proveedorPredeterminado) {
+      return 0;
+    }
     const artProv = await this.articuloProveedorRepo.findOne({
       where: {
         articulo: { id: articulo.id },
@@ -202,6 +214,10 @@ export class InventarioService {
     >();
 
     articulos.forEach((articulo) => {
+      if (!articulo.proveedorPredeterminado) {
+        console.log('No hay proveedor predeterminado');
+        return 0;
+      }
       const provId = articulo.proveedorPredeterminado.id;
       if (sonLoteFijo && !articulo.loteOptimo) {
         throw new InternalServerErrorException(

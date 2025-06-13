@@ -54,9 +54,9 @@ export class Articulo {
   fechaBajaArticulo: Date;
 
   // RELACIONES
-  @ManyToOne(() => Proveedor)
+  @ManyToOne(() => Proveedor,{nullable: true})
   @JoinColumn()
-  proveedorPredeterminado: Proveedor;
+  proveedorPredeterminado: Proveedor | null;
 
   @OneToMany(() => ArticuloProveedor, (ap) => ap.articulo)
   articulosProveedor: ArticuloProveedor[];
