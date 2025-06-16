@@ -182,6 +182,12 @@ export class OrdenCompraService {
       throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
     }
 
+    if (oc.estado.codigoEstadoOrdenCompra !== 'PENDIENTE') {
+      throw new BadRequestException(
+        'Solo se puede modificar/cancelar una OC pendiente',
+      );
+    }
+
     // Buscar proveedor si viene
     let proveedor = oc.proveedor;
     if (dto.proveedorId) {
@@ -269,6 +275,12 @@ export class OrdenCompraService {
     if (!oc) {
       throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
     }
+    if (oc.estado.codigoEstadoOrdenCompra !== 'PENDIENTE') {
+      throw new BadRequestException(
+        'Solo se puede modificar/cancelar una OC pendiente',
+      );
+    }
+
     oc.fechaBajaOrdenCompra = new Date();
     return this.ordenRepo.save(oc);
   }
@@ -306,5 +318,46 @@ export class OrdenCompraService {
       return prev + detalleArticulo.cantidadArticulo;
     }, 0);
     return articulosPendientes;
+  }
+
+  // ---------------------------- RECEPCIÓN (Estado ENVIADO) ----------------------------
+  async procesarRecepcion(id: number) {
+    const oc = await this.ordenRepo.findOne({
+      where: { id },
+      relations: ['estado', 'detallesOrden', 'detallesOrden.articulo'],
+    });
+
+    if (!oc) {
+      throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
+    }
+
+    if (oc.estado.codigoEstadoOrdenCompra !== 'CONFIRMADA') {
+      throw new BadRequestException(
+        'Solo se puede recibir una orden confirmada',
+      );
+    }
+
+    const estadoEnviada = await this.estadoRepo.findOneBy({
+      codigoEstadoOrdenCompra: 'ENVIADA',
+    });
+
+    if (!estadoEnviada) {
+      throw new InternalServerErrorException('Estado ENVIADA no encontrado');
+    }
+
+    // Actualizar stock
+    for (const detalle of oc.detallesOrden) {
+      const articulo = await this.articuloRepo.findOneBy({
+        id: detalle.articulo.id,
+      });
+      if (articulo) {
+        articulo.stockActual += detalle.cantidadArticulo;
+        await this.articuloRepo.save(articulo);
+      }
+    }
+
+    // Cambiar estado
+    oc.estado = estadoEnviada;
+    return this.ordenRepo.save(oc);
   }
 }
