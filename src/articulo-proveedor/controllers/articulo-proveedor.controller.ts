@@ -7,6 +7,7 @@ import {
   Put,
   Query,
   ParseIntPipe,
+  Param,
 } from '@nestjs/common';
 
 import { ArticuloProveedorService } from '../services/articulo-proveedor.service';
@@ -37,5 +38,20 @@ export class ArticuloProveedorController {
   @Get()
   findAll() {
     return this.service.findAll();
+  }
+
+  /* ----------- READ: proveedores válidos para un artículo ---------------- */
+  @Get('proveedores-por-articulo/:articuloId')
+  findProveedoresPorArticulo(
+    @Param('articuloId', ParseIntPipe) articuloId: number,
+  ) {
+    return this.service.findProveedoresByArticulo(articuloId);
+  }
+
+  @Get('por-articulo/:articuloId') // ← nuevo endpoint para el modal
+  findRelacionesPorArticulo(
+    @Param('articuloId', ParseIntPipe) articuloId: number,
+  ) {
+    return this.service.findRelacionesByArticulo(articuloId);
   }
 }

@@ -1,12 +1,12 @@
 // NEST CORE ---------------------------------------------------------
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 // ENTITIES ----------------------------------------------------------
 import { Articulo } from './entities/articulo.entity';
 import { Proveedor } from './entities/proveedor.entity';
 import { ArticuloProveedor } from './entities/articulo-proveedor.entity';
-import { OrdenCompra } from 'src/orden-compra/entities/orden-compra.entity'; // sólo repo para validaciones
+import { OrdenCompra } from 'src/orden-compra/entities/orden-compra.entity';
 
 // SERVICES ----------------------------------------------------------
 import { ArticuloService } from './services/articulo.service';
@@ -18,6 +18,8 @@ import { ArticuloController } from './controllers/articulo.controller';
 import { ProveedorController } from './controllers/proveedor.controller';
 import { ArticuloProveedorController } from './controllers/articulo-proveedor.controller';
 
+import { InventarioModule } from 'src/inventario/inventario.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -26,6 +28,7 @@ import { ArticuloProveedorController } from './controllers/articulo-proveedor.co
       ArticuloProveedor,
       OrdenCompra, // necesario para reglas de negocio en ProveedorService
     ]),
+    forwardRef(() => InventarioModule), //Para evitar dependencia circular
   ],
   controllers: [
     ArticuloController,
