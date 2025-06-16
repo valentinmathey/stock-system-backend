@@ -108,7 +108,7 @@ export class VentaService {
         throw error;
       }
       throw new InternalServerErrorException(
-        'Hubo un error inesperado al generar la venta. Si el problema persiste, contacte con soporte',
+        'Hubo un error inesperado al generar la venta.',
       );
     }
   }

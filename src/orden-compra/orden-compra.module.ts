@@ -1,5 +1,5 @@
 // MODULES -----------------------------------------------------------
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 // ENTITIES ----------------------------------------------------------
@@ -28,7 +28,7 @@ import { ArticuloProveedorModule } from 'src/articulo-proveedor/articulo-proveed
       // Articulo solo se usa en servicios internos
       Articulo,
     ]),
-    ArticuloProveedorModule,
+    forwardRef(() => ArticuloProveedorModule), //Para evitar dependencia circular
   ],
   controllers: [OrdenCompraController],
   providers: [OrdenCompraService, EstadoOrdenCompraService],

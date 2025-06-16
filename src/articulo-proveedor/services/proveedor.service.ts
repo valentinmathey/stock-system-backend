@@ -65,12 +65,7 @@ export class ProveedorService {
           costoCompraUnitarioArticulo:
             data.articulo.costoCompraUnitarioArticulo,
           demoraEntregaProveedor: data.articulo.demoraEntregaProveedor,
-          ...(data.articulo.tiempoRevision !== undefined && {
-            tiempoRevision: data.articulo.tiempoRevision,
-          }),
-          ...(data.articulo.proximaFechaRevision !== undefined && {
-            proximaFechaRevision: data.articulo.proximaFechaRevision,
-          }),
+          tiempoRevision: data.articulo.tiempoRevision,
         },
         manager, // Se le pasás el manager
       );

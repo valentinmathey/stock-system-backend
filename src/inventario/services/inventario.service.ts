@@ -75,38 +75,33 @@ export class InventarioService {
     }
     return Math.sqrt((2 * demanda * costoPedido) / costoMantenimiento);
   }
-
-  async calcularCostoTotal(articulo: Articulo) {
-    if (!articulo.proveedorPredeterminado) {
-      return 0;
-    }
-    const artProv = await this.articuloProveedorRepo.findOne({
-      where: {
-        articulo: { id: articulo.id },
-        proveedor: { id: articulo.proveedorPredeterminado.id },
-      },
-    });
-    if (!artProv) {
-      throw new InternalServerErrorException(
-        `Proveedor determinador no cargado en articulo-proveedor`,
-      );
-    }
+  async calcularCostoTotal(
+    articulo: Articulo,
+    artProv: ArticuloProveedor,
+  ): Promise<number> {
     const demanda = articulo.demandaAnual;
     const costoUnidad = artProv.costoCompraUnitarioArticulo;
-    const loteOptimo = articulo.loteOptimo ?? 0;
-    if (loteOptimo <= 0) {
-      throw new InternalServerErrorException(
-        'No se puede calcular el CT con lote optimo igual a 0 o nulo',
+    const costoPedido = artProv.costoPedido;
+    const costoMantenimiento = articulo.costoAlmacenamientoPorUnidad;
+
+    if (artProv.modeloInventario === ModeloInventario.LOTE_FIJO) {
+      const lote = articulo.loteOptimo ?? 0;
+      if (lote <= 0) {
+        throw new InternalServerErrorException(
+          'No se puede calcular CT con lote óptimo igual a 0 o nulo',
+        );
+      }
+      return (
+        demanda * costoUnidad +
+        (demanda / lote) * costoPedido +
+        (lote / 2) * costoMantenimiento
       );
     }
-    const costoPedido = artProv.costoPedido;
-    const costoAlmacenamiento = articulo.costoAlmacenamientoPorUnidad;
 
-    return (
-      demanda * costoUnidad +
-      (demanda / loteOptimo) * costoPedido +
-      (loteOptimo / 2) * costoAlmacenamiento
-    );
+    // -------- TIEMPO_FIJO ----------
+    //   CT = Costo de compra + Costo de mantenimiento sobre inventario máximo
+    const inventarioMax = articulo.inventarioMaximo ?? 0;
+    return demanda * costoUnidad + (inventarioMax / 2) * costoMantenimiento;
   }
 
   /**
@@ -257,5 +252,63 @@ export class InventarioService {
         await this.ordenCompraService.create(dto);
       }
     }
+  }
+
+  // CALCULO GENERAL
+
+  /**
+   * @description Calcula y asigna lote óptimo, punto de pedido, inventario máximo y CGI al artículo, según el modelo de inventario.
+   */
+  async calcularYAsignarDatosInventario(articulo: Articulo): Promise<void> {
+    if (!articulo.proveedorPredeterminado) {
+      throw new InternalServerErrorException(
+        'El artículo no tiene proveedor predeterminado asignado',
+      );
+    }
+
+    const artProv = await this.articuloProveedorRepo.findOne({
+      where: {
+        articulo: { id: articulo.id },
+        proveedor: { id: articulo.proveedorPredeterminado.id },
+      },
+    });
+
+    if (!artProv) {
+      throw new InternalServerErrorException(
+        'No se encontró la relación Articulo-Proveedor para el proveedor predeterminado',
+      );
+    }
+
+    const demandaDiaria = articulo.demandaAnual / 365;
+
+    // Lote fijo
+    if (artProv.modeloInventario === ModeloInventario.LOTE_FIJO) {
+      const lote = await this.calcularLoteOptimo(articulo);
+      const punto = await this.calcularPuntoPedido(articulo);
+      articulo.loteOptimo = Math.round(lote);
+      articulo.puntoPedido = Math.round(punto);
+      articulo.inventarioMaximo = Math.round(
+        articulo.loteOptimo + articulo.stockSeguridad,
+      );
+    }
+
+    // Tiempo fijo
+    if (artProv.modeloInventario === ModeloInventario.TIEMPO_FIJO) {
+      if (!artProv.tiempoRevision) {
+        throw new InternalServerErrorException(
+          'Falta tiempo de revisión para modelo TIEMPO_FIJO',
+        );
+      }
+      articulo.loteOptimo = null;
+      const punto = await this.calcularPuntoPedido(articulo);
+      const inventarioMax =
+        demandaDiaria * artProv.tiempoRevision + articulo.stockSeguridad;
+
+      articulo.puntoPedido = Math.round(punto);
+      articulo.inventarioMaximo = Math.round(inventarioMax);
+    }
+
+    // CGI aplica a ambos modelos
+    articulo.cgi = await this.calcularCostoTotal(articulo, artProv);
   }
 }

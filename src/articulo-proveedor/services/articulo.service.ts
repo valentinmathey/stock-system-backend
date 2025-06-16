@@ -15,6 +15,7 @@ import { Articulo } from '../entities/articulo.entity';
 import { CreateArticuloDto } from '../dto/articulo/create-articulo.dto';
 import { UpdateArticuloDto } from '../dto/articulo/update-articulo.dto';
 import { Proveedor } from '../entities/proveedor.entity';
+import { InventarioService } from 'src/inventario/services/inventario.service';
 
 @Injectable()
 export class ArticuloService {
@@ -25,6 +26,8 @@ export class ArticuloService {
 
     @InjectRepository(Proveedor)
     private readonly proveedorRepo: Repository<Proveedor>,
+
+    private readonly inventarioService: InventarioService,
   ) {}
 
   /* ---------------------------- CREATE --------------------------- */
@@ -119,7 +122,11 @@ export class ArticuloService {
         );
       }
 
+      // Asignamos el proveedor predeterminado
       art.proveedorPredeterminado = proveedor;
+
+      // Calculamos los datos del inventario automáticamente
+      await this.inventarioService.calcularYAsignarDatosInventario(art);
     }
 
     return this.articuloRepo.save(art);
