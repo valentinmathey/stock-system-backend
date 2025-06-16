@@ -239,6 +239,21 @@ export class OrdenCompraService {
         );
       }
 
+      if (artProv.modeloInventario === 'LOTE_FIJO') {
+        if (articulo.puntoPedido == null) {
+          console.warn(
+            `El artículo "${articulo.nombreArticulo}" no tiene punto de pedido definido.`,
+          );
+        } else {
+          const stockTotalFuturo = articulo.stockActual + d.cantidadArticulo;
+          if (stockTotalFuturo <= articulo.puntoPedido) {
+            console.warn(
+              `Advertencia: la OC para el artículo "${articulo.nombreArticulo}" con proveedor "${proveedor.nombreProveedor}" no supera el punto de pedido (Stock futuro: ${stockTotalFuturo}, PP: ${articulo.puntoPedido})`,
+            );
+          }
+        }
+      }
+
       const costoCompra = artProv.costoCompraUnitarioArticulo;
       const costoPedido = artProv.costoPedido;
 
@@ -271,7 +286,10 @@ export class OrdenCompraService {
 
   /* ---------------------------- DELETE ---------------------------- */
   async delete(id: number) {
-    const oc = await this.ordenRepo.findOneBy({ id });
+    const oc = await this.ordenRepo.findOne({
+      where: { id },
+      relations: ['estado'],
+    });
     if (!oc) {
       throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
     }
