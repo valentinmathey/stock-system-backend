@@ -239,6 +239,21 @@ export class OrdenCompraService {
         );
       }
 
+      if (artProv.modeloInventario === 'LOTE_FIJO') {
+        if (articulo.puntoPedido == null) {
+          console.warn(
+            `El artículo "${articulo.nombreArticulo}" no tiene punto de pedido definido.`,
+          );
+        } else {
+          const stockTotalFuturo = articulo.stockActual + d.cantidadArticulo;
+          if (stockTotalFuturo <= articulo.puntoPedido) {
+            console.warn(
+              `Advertencia: la OC para el artículo "${articulo.nombreArticulo}" con proveedor "${proveedor.nombreProveedor}" no supera el punto de pedido (Stock futuro: ${stockTotalFuturo}, PP: ${articulo.puntoPedido})`,
+            );
+          }
+        }
+      }
+
       const costoCompra = artProv.costoCompraUnitarioArticulo;
       const costoPedido = artProv.costoPedido;
 
@@ -271,7 +286,10 @@ export class OrdenCompraService {
 
   /* ---------------------------- DELETE ---------------------------- */
   async delete(id: number) {
-    const oc = await this.ordenRepo.findOneBy({ id });
+    const oc = await this.ordenRepo.findOne({
+      where: { id },
+      relations: ['estado'],
+    });
     if (!oc) {
       throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
     }
@@ -297,8 +315,8 @@ export class OrdenCompraService {
       .innerJoin('orden.detallesOrden', 'detalle')
       .innerJoin('detalle.articulo', 'articulo')
       .where('estado.id = :estadoId', { estadoId: ordenCompraPendiente.id })
-      .andWhere('estado.nombreEstadoOrdenCompra IN (:...estados)', {
-        estados: ['PENDIENTE', 'ENVIADA'],
+      .andWhere('estado.codigoEstadoOrdenCompra IN (:...estados)', {
+        estados: ['PENDIENTE', 'FINALIZADA'],
       })
       .andWhere('articulo.id = :articuloId', { articuloId: articulo.id })
       .getMany();
@@ -321,7 +339,7 @@ export class OrdenCompraService {
   }
 
   // ---------------------------- RECEPCIÓN (Estado ENVIADO) ----------------------------
-  async procesarRecepcion(id: number) {
+  async finalizar(id: number) {
     const oc = await this.ordenRepo.findOne({
       where: { id },
       relations: ['estado', 'detallesOrden', 'detallesOrden.articulo'],
@@ -337,12 +355,12 @@ export class OrdenCompraService {
       );
     }
 
-    const estadoEnviada = await this.estadoRepo.findOneBy({
-      codigoEstadoOrdenCompra: 'ENVIADA',
+    const estadoFinalizada = await this.estadoRepo.findOneBy({
+      codigoEstadoOrdenCompra: 'FINALIZADA',
     });
 
-    if (!estadoEnviada) {
-      throw new InternalServerErrorException('Estado ENVIADA no encontrado');
+    if (!estadoFinalizada) {
+      throw new InternalServerErrorException('Estado FINALIZADA no encontrado');
     }
 
     // Actualizar stock
@@ -357,7 +375,7 @@ export class OrdenCompraService {
     }
 
     // Cambiar estado
-    oc.estado = estadoEnviada;
+    oc.estado = estadoFinalizada;
     return this.ordenRepo.save(oc);
   }
 }

@@ -49,8 +49,8 @@ export class OrdenCompraController {
   delete(@Param('id', ParseIntPipe) id: number) {
     return this.ordenCompraService.delete(id);
   }
-  @Patch(':id/recibir')
-  recibir(@Param('id', ParseIntPipe) id: number) {
-    return this.ordenCompraService.procesarRecepcion(id);
+  @Patch(':id/finalizar')
+  finalizar(@Param('id', ParseIntPipe) id: number) {
+    return this.ordenCompraService.finalizar(id);
   }
 }
