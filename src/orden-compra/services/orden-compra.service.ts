@@ -315,8 +315,8 @@ export class OrdenCompraService {
       .innerJoin('orden.detallesOrden', 'detalle')
       .innerJoin('detalle.articulo', 'articulo')
       .where('estado.id = :estadoId', { estadoId: ordenCompraPendiente.id })
-      .andWhere('estado.nombreEstadoOrdenCompra IN (:...estados)', {
-        estados: ['PENDIENTE', 'ENVIADA'],
+      .andWhere('estado.codigoEstadoOrdenCompra IN (:...estados)', {
+        estados: ['PENDIENTE', 'FINALIZADA'],
       })
       .andWhere('articulo.id = :articuloId', { articuloId: articulo.id })
       .getMany();
@@ -339,7 +339,7 @@ export class OrdenCompraService {
   }
 
   // ---------------------------- RECEPCIÓN (Estado ENVIADO) ----------------------------
-  async procesarRecepcion(id: number) {
+  async finalizar(id: number) {
     const oc = await this.ordenRepo.findOne({
       where: { id },
       relations: ['estado', 'detallesOrden', 'detallesOrden.articulo'],
@@ -355,12 +355,12 @@ export class OrdenCompraService {
       );
     }
 
-    const estadoEnviada = await this.estadoRepo.findOneBy({
-      codigoEstadoOrdenCompra: 'ENVIADA',
+    const estadoFinalizada = await this.estadoRepo.findOneBy({
+      codigoEstadoOrdenCompra: 'FINALIZADA',
     });
 
-    if (!estadoEnviada) {
-      throw new InternalServerErrorException('Estado ENVIADA no encontrado');
+    if (!estadoFinalizada) {
+      throw new InternalServerErrorException('Estado FINALIZADA no encontrado');
     }
 
     // Actualizar stock
@@ -375,7 +375,7 @@ export class OrdenCompraService {
     }
 
     // Cambiar estado
-    oc.estado = estadoEnviada;
+    oc.estado = estadoFinalizada;
     return this.ordenRepo.save(oc);
   }
 }
