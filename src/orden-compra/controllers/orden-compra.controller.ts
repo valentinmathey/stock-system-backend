@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   ParseIntPipe,
+  Patch,
 } from '@nestjs/common';
 
 import { OrdenCompraService } from '../services/orden-compra.service';
@@ -47,5 +48,9 @@ export class OrdenCompraController {
   @Delete(':id')
   delete(@Param('id', ParseIntPipe) id: number) {
     return this.ordenCompraService.delete(id);
+  }
+  @Patch(':id/recibir')
+  recibir(@Param('id', ParseIntPipe) id: number) {
+    return this.ordenCompraService.procesarRecepcion(id);
   }
 }
