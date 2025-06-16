@@ -69,6 +69,9 @@ export class ArticuloService {
     return this.articuloRepo.find({
       relations: ['proveedorPredeterminado'],
       where: { fechaBajaArticulo: IsNull() },
+      order: {
+        id: 'ASC',
+      },
     });
   }
 
