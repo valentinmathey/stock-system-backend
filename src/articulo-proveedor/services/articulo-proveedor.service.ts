@@ -9,12 +9,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 
 // ENTITY ------------------------------------------------------------
-import { ArticuloProveedor, ModeloInventario } from '../entities/articulo-proveedor.entity';
+import {
+  ArticuloProveedor,
+  ModeloInventario,
+} from '../entities/articulo-proveedor.entity';
 
 // DTOs --------------------------------------------------------------
 import { CreateArticuloProveedorDto } from '../dto/articuloproveedor/create-articulo-proveedor.dto';
 import { UpdateArticuloProveedorDto } from '../dto/articuloproveedor/update-articulo-proveedor.dto';
 import { Articulo } from '../entities/articulo.entity';
+import { InventarioService } from 'src/inventario/services/inventario.service';
 
 @Injectable()
 export class ArticuloProveedorService {
@@ -22,6 +26,10 @@ export class ArticuloProveedorService {
   constructor(
     @InjectRepository(ArticuloProveedor)
     private readonly repo: Repository<ArticuloProveedor>,
+
+    @InjectRepository(Articulo)
+    private readonly artRepo: Repository<Articulo>,
+    private readonly inventarioService: InventarioService,
   ) {}
 
   /* ---------------------------- CREATE --------------------------- */
@@ -119,21 +127,22 @@ export class ArticuloProveedorService {
 
   /* ---------------------------- UPDATE --------------------------- */
   async update(id: number, data: UpdateArticuloProveedorDto) {
-    const ap = await this.repo.findOneBy({ id });
-    if (!ap) {
+    const rel = await this.repo.findOne({
+      where: { id },
+      relations: ['articulo'],
+    });
+    if (!rel)
       throw new HttpException(
         `Relación id ${id} no existe`,
         HttpStatus.BAD_REQUEST,
       );
-    }
 
-    // Si se cambia (o mantiene) LOTE_FIJO, quitamos tiempoRevision
+    /* ------ Normalizamos campos según el modelo ------ */
     if (data.modeloInventario === ModeloInventario.LOTE_FIJO) {
       data.tiempoRevision = undefined;
       data.proximaFechaRevision = undefined;
     }
 
-    // Si es TIEMPO_FIJO y mandan tiempoRevision, recalculamos proximaFechaRevision
     if (
       data.modeloInventario === ModeloInventario.TIEMPO_FIJO &&
       data.tiempoRevision !== undefined
@@ -143,7 +152,21 @@ export class ArticuloProveedorService {
       data.proximaFechaRevision = hoy;
     }
 
+    /* ------  Actualizamos la relación ------ */
     await this.repo.update(id, data);
+
+    /* ------  Re-cálculo del artículo asociado ------ */
+    const articulo = await this.artRepo.findOne({
+      where: { id: rel.articulo.id },
+      relations: ['proveedorPredeterminado'],
+    });
+
+    if (articulo) {
+      await this.inventarioService.calcularYAsignarDatosInventario(articulo);
+      await this.artRepo.save(articulo); // guarda nuevo lote-pp-max-cgi
+    }
+
+    /* ------  Devolvemos la relación actualizada ------ */
     return this.repo.findOne({
       where: { id },
       relations: ['articulo', 'proveedor'],
@@ -177,6 +200,15 @@ export class ArticuloProveedorService {
     return this.repo.find({
       where: { articulo: { id: articuloId } },
       relations: ['proveedor'], // incluye todos los campos de proveedor
+      order: { id: 'ASC' },
+    });
+  }
+
+  /* -------------- READ: relaciones por proveedor -------------- */
+  async findRelacionesByProveedor(proveedorId: number) {
+    return this.repo.find({
+      where: { proveedor: { id: proveedorId } },
+      relations: ['articulo'], // incluye el artículo para sacar su id
       order: { id: 'ASC' },
     });
   }

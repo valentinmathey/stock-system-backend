@@ -28,7 +28,7 @@ export class ArticuloProveedorController {
   /* -------------------------- UPDATE ----------------------------- */
   @Put(':id')
   update(
-    @Query('id', ParseIntPipe) id: number,
+    @Param('id', ParseIntPipe) id: number, 
     @Body() data: UpdateArticuloProveedorDto,
   ) {
     return this.service.update(id, data);
@@ -48,10 +48,17 @@ export class ArticuloProveedorController {
     return this.service.findProveedoresByArticulo(articuloId);
   }
 
-  @Get('por-articulo/:articuloId') // ← nuevo endpoint para el modal
+  @Get('por-articulo/:articuloId')
   findRelacionesPorArticulo(
     @Param('articuloId', ParseIntPipe) articuloId: number,
   ) {
     return this.service.findRelacionesByArticulo(articuloId);
+  }
+
+  @Get('por-proveedor/:proveedorId')
+  findRelacionesPorProveedor(
+    @Param('proveedorId', ParseIntPipe) proveedorId: number,
+  ) {
+    return this.service.findRelacionesByProveedor(proveedorId);
   }
 }
