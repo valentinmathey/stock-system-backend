@@ -16,6 +16,9 @@ import { CreateArticuloDto } from '../dto/articulo/create-articulo.dto';
 import { UpdateArticuloDto } from '../dto/articulo/update-articulo.dto';
 import { Proveedor } from '../entities/proveedor.entity';
 import { InventarioService } from 'src/inventario/services/inventario.service';
+import { DetalleOrdenCompra } from 'src/orden-compra/entities/detalle-orden-compra.entity';
+import { OrdenCompra } from 'src/orden-compra/entities/orden-compra.entity';
+import { EstadoOrdenCompra } from 'src/orden-compra/entities/estado-orden-compra.entity';
 
 @Injectable()
 export class ArticuloService {
@@ -146,11 +149,13 @@ export class ArticuloService {
 
   /* ---------- Extra: artículos con stock por debajo de seguridad - */
   getStockBajo() {
-    return this.articuloRepo
-      .createQueryBuilder('articulo')
-      .where('articulo.stockActual <= articulo.stockSeguridad')
-      .getMany();
-  }
+  return this.articuloRepo
+    .createQueryBuilder('articulo')
+    .where('articulo.stockActual <= articulo.stockSeguridad')
+    .orderBy('articulo.stockActual', 'ASC')     
+    .addOrderBy('articulo.nombreArticulo', 'ASC') 
+    .getMany();
+}
 
   /* ---------- Extra: artículos que alcanzaron el punto de pedido y NO tienen OC pendientes --- */
   async getParaReponer() {
@@ -159,16 +164,16 @@ export class ArticuloService {
     return (
       this.articuloRepo
         .createQueryBuilder('a')
-        .leftJoinAndSelect('a.detallesOrdenCompra', 'd')
-        .leftJoinAndSelect('d.ordenCompra', 'oc')
-        .where('a.stockActual <= a.puntoPedido') // debajo o igual al PP
-        /*  Sin OC pendientes/enviadas */
+        .leftJoin(DetalleOrdenCompra, 'd', 'd.articuloId = a.id')
+        .leftJoin(OrdenCompra, 'oc', 'oc.id = d.ordenCompraId')
+        .leftJoin(EstadoOrdenCompra, 'e', 'e.id = oc.estadoId')
+        .where('a.stockActual <= a.puntoPedido')
         .andWhere(
           new Brackets((qb) =>
             qb
               .where('oc.id IS NULL')
-              .orWhere('oc.estado NOT IN (:...estadosPendientes)', {
-                estadosPendientes,
+              .orWhere('e.codigoEstadoOrdenCompra NOT IN (:...pend)', {
+                pend: estadosPendientes,
               }),
           ),
         )
