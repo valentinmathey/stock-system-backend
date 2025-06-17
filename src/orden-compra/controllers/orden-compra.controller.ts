@@ -53,4 +53,9 @@ export class OrdenCompraController {
   finalizar(@Param('id', ParseIntPipe) id: number) {
     return this.ordenCompraService.finalizar(id);
   }
+  @Patch(':id/confirmar')
+  confirmar(@Param('id', ParseIntPipe) id: number) {
+  return this.ordenCompraService.confirmar(id);
+}
+
 }

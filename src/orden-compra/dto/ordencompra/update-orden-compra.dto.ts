@@ -27,9 +27,10 @@ export class UpdateOrdenCompraDto {
   @IsInt()
   estadoId?: number;
 
+  @IsOptional() 
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => UpdateDetalleOrdenCompraDto)
-  detalles: UpdateDetalleOrdenCompraDto[];
+  detalles?: UpdateDetalleOrdenCompraDto[];
 }

@@ -17,6 +17,7 @@ import { OrdenCompraController } from './controllers/orden-compra.controller';
 
 // MODULES DEPENDENCIES ---------------------------------------------
 import { ArticuloProveedorModule } from 'src/articulo-proveedor/articulo-proveedor.module';
+import { EstadoOrdenCompraController } from './controllers/estado-orden-compra.controller';
 
 
 @Module({
@@ -30,7 +31,7 @@ import { ArticuloProveedorModule } from 'src/articulo-proveedor/articulo-proveed
     ]),
     ArticuloProveedorModule,
   ],
-  controllers: [OrdenCompraController],
+  controllers: [OrdenCompraController, EstadoOrdenCompraController],
   providers: [OrdenCompraService, EstadoOrdenCompraService],
   exports: [OrdenCompraService],
 })

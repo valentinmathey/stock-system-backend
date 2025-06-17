@@ -28,7 +28,7 @@ export class ArticuloController {
 
   /** Devuelve los proveedores asociados a un artículo */
   @Get(':id/proveedores')
-  findProviders(@Query('id', ParseIntPipe) id: number) {
+  findProviders(@Param('id', ParseIntPipe) id: number) {
     return this.articuloService.getProviders(id);
   }
 

@@ -171,49 +171,37 @@ export class OrdenCompraService {
     return orden;
   }
 
-  /* ---------------------------- UPDATE ---------------------------- */
-  async update(id: number, dto: UpdateOrdenCompraDto) {
-    const oc = await this.ordenRepo.findOne({
-      where: { id },
-      relations: ['proveedor', 'estado', 'detallesOrden'],
-    });
+// ---------------------------- UPDATE ----------------------------
+async update(id: number, dto: UpdateOrdenCompraDto) {
+  const oc = await this.ordenRepo.findOne({
+    where: { id },
+    relations: ['proveedor', 'estado', 'detallesOrden'],
+  });
+  if (!oc) throw new NotFoundException(`Orden con id ${id} no encontrada`);
 
-    if (!oc) {
-      throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
-    }
+  if (oc.estado.codigoEstadoOrdenCompra !== 'PENDIENTE') {
+    throw new BadRequestException('Solo se puede modificar una OC pendiente');
+  }
 
-    if (oc.estado.codigoEstadoOrdenCompra !== 'PENDIENTE') {
-      throw new BadRequestException(
-        'Solo se puede modificar/cancelar una OC pendiente',
-      );
-    }
+  /* ---------- proveedor y estado (opcionales) ---------- */
+  if (dto.proveedorId) {
+    const proveedor = await this.proveedorRepo.findOneBy({ id: dto.proveedorId });
+    if (!proveedor) throw new BadRequestException('Proveedor no válido');
+    oc.proveedor = proveedor;
+  }
 
-    // Buscar proveedor si viene
-    let proveedor = oc.proveedor;
-    if (dto.proveedorId) {
-      const nuevoProveedor = await this.proveedorRepo.findOneBy({
-        id: dto.proveedorId,
-      });
-      if (!nuevoProveedor) {
-        throw new BadRequestException('Proveedor no válido');
-      }
-      proveedor = nuevoProveedor;
-    }
+  if (dto.estadoId) {
+    const estado = await this.estadoRepo.findOneBy({ id: dto.estadoId });
+    if (!estado) throw new BadRequestException('Estado no válido');
+    oc.estado = estado;
+  }
 
-    // Buscar estado si viene
-    let estado = oc.estado;
-    if (dto.estadoId) {
-      const nuevoEstado = await this.estadoRepo.findOneBy({ id: dto.estadoId });
-      if (!nuevoEstado) {
-        throw new BadRequestException('Estado no válido');
-      }
-      estado = nuevoEstado;
-    }
-
-    // Eliminar detalles existentes
+  /* ---------- detalles (sólo si dto.detalles existe) --- */
+  if (dto.detalles) {
+    // 1) borrar los existentes
     await this.detalleRepo.delete({ ordenCompra: { id: oc.id } });
 
-    // Volver a cargar nuevos detalles
+    // 2) reconstruir
     let costoPedidoTotal = 0;
     let costoCompraTotal = 0;
     const nuevosDetalles: DetalleOrdenCompra[] = [];
@@ -221,47 +209,26 @@ export class OrdenCompraService {
     for (const d of dto.detalles) {
       const articulo = await this.articuloRepo.findOneBy({ id: d.articuloId });
       if (!articulo) {
-        throw new NotFoundException(
-          `Artículo con ID ${d.articuloId} no encontrado`,
-        );
+        throw new NotFoundException(`Artículo ${d.articuloId} no encontrado`);
       }
 
       const artProv = await this.articuloProveedorRepo.findOne({
-        where: {
-          articulo: { id: articulo.id },
-          proveedor: { id: proveedor.id },
-        },
+        where: { articulo: { id: articulo.id }, proveedor: { id: oc.proveedor.id } },
       });
-
       if (!artProv) {
         throw new NotFoundException(
-          `No existe relación Artículo-Proveedor para artículo ${articulo.nombreArticulo} y proveedor ${proveedor.nombreProveedor}`,
+          `Relación Artículo-Proveedor inexistente para "${articulo.nombreArticulo}"`,
         );
       }
 
-      if (artProv.modeloInventario === 'LOTE_FIJO') {
-        if (articulo.puntoPedido == null) {
-          console.warn(
-            `El artículo "${articulo.nombreArticulo}" no tiene punto de pedido definido.`,
-          );
-        } else {
-          const stockTotalFuturo = articulo.stockActual + d.cantidadArticulo;
-          if (stockTotalFuturo <= articulo.puntoPedido) {
-            console.warn(
-              `Advertencia: la OC para el artículo "${articulo.nombreArticulo}" con proveedor "${proveedor.nombreProveedor}" no supera el punto de pedido (Stock futuro: ${stockTotalFuturo}, PP: ${articulo.puntoPedido})`,
-            );
-          }
-        }
-      }
-
-      const costoCompra = artProv.costoCompraUnitarioArticulo;
       const costoPedido = artProv.costoPedido;
+      const costoCompra = artProv.costoCompraUnitarioArticulo;
 
       const detalle = this.detalleRepo.create({
         articulo,
         cantidadArticulo: d.cantidadArticulo,
-        costoCompraUnitarioArticulo: costoCompra,
         costoPedidoSubtotal: costoPedido,
+        costoCompraUnitarioArticulo: costoCompra,
         costoCompraSubtotal: d.cantidadArticulo * costoCompra,
       });
 
@@ -270,19 +237,20 @@ export class OrdenCompraService {
       nuevosDetalles.push(detalle);
     }
 
-    // Actualizar campos de la OC
-    oc.fechaOrdenCompra = dto.fechaOrdenCompra
-      ? new Date(dto.fechaOrdenCompra)
-      : oc.fechaOrdenCompra;
-    oc.proveedor = proveedor;
-    oc.estado = estado;
-    oc.detallesOrden = nuevosDetalles;
-    oc.costoPedidoTotal = costoPedidoTotal;
-    oc.costoCompraTotal = costoCompraTotal;
-    oc.costoTotal = costoPedidoTotal + costoCompraTotal;
-
-    return this.ordenRepo.save(oc);
+    oc.detallesOrden     = nuevosDetalles;
+    oc.costoPedidoTotal  = costoPedidoTotal;
+    oc.costoCompraTotal  = costoCompraTotal;
+    oc.costoTotal        = costoPedidoTotal + costoCompraTotal;
   }
+
+  /* ---------- fecha (opcional) ---------- */
+  if (dto.fechaOrdenCompra) {
+    oc.fechaOrdenCompra = new Date(dto.fechaOrdenCompra);
+  }
+
+  return this.ordenRepo.save(oc);
+}
+
 
   /* ---------------------------- DELETE ---------------------------- */
   async delete(id: number) {
@@ -336,6 +304,28 @@ export class OrdenCompraService {
       return prev + detalleArticulo.cantidadArticulo;
     }, 0);
     return articulosPendientes;
+  }
+// ---------------------------- CONFIRMACIÓN (Estado PENDIENTE) ----------------------------
+  async confirmar(id: number) {
+    const oc = await this.ordenRepo.findOne({
+      where: { id },
+      relations: ['estado'],
+    });
+
+    if (!oc || oc.estado.codigoEstadoOrdenCompra !== 'PENDIENTE') {
+      throw new BadRequestException('Solo se puede confirmar una OC pendiente');
+    }
+
+    const estadoConfirmada = await this.estadoRepo.findOneBy({
+      codigoEstadoOrdenCompra: 'CONFIRMADA',
+    });
+
+    if (!estadoConfirmada) {
+      throw new Error('Estado CONFIRMADA no encontrado');
+    }
+
+    oc.estado = estadoConfirmada;
+    return this.ordenRepo.save(oc);
   }
 
   // ---------------------------- RECEPCIÓN (Estado ENVIADO) ----------------------------
