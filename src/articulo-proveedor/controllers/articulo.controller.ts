@@ -38,6 +38,17 @@ export class ArticuloController {
     return this.articuloService.getStockBajo();
   }
 
+  @Get('top-stock')
+  getTopStock(@Query('limit') limit?: string) {
+    return this.articuloService.getTopStock(Number(limit) || 10);
+  }
+
+  /* --------------------------- READ extra --------------------------- */
+  @Get('paraReponer')
+  findParaReponer() {
+    return this.articuloService.getParaReponer();
+  }
+
   /* --------------------------- CREATE ----------------------------- */
   @Post()
   create(@Body() dto: CreateArticuloDto) {

@@ -6,7 +6,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { Brackets, IsNull, Repository } from 'typeorm';
 
 // ENTITY ------------------------------------------------------------
 import { Articulo } from '../entities/articulo.entity';
@@ -149,6 +149,40 @@ export class ArticuloService {
     return this.articuloRepo
       .createQueryBuilder('articulo')
       .where('articulo.stockActual <= articulo.stockSeguridad')
+      .getMany();
+  }
+
+  /* ---------- Extra: artículos que alcanzaron el punto de pedido y NO tienen OC pendientes --- */
+  async getParaReponer() {
+    const estadosPendientes = ['PENDIENTE', 'ENVIADA'];
+
+    return (
+      this.articuloRepo
+        .createQueryBuilder('a')
+        .leftJoinAndSelect('a.detallesOrdenCompra', 'd')
+        .leftJoinAndSelect('d.ordenCompra', 'oc')
+        .where('a.stockActual <= a.puntoPedido') // debajo o igual al PP
+        /*  Sin OC pendientes/enviadas */
+        .andWhere(
+          new Brackets((qb) =>
+            qb
+              .where('oc.id IS NULL')
+              .orWhere('oc.estado NOT IN (:...estadosPendientes)', {
+                estadosPendientes,
+              }),
+          ),
+        )
+        .getMany()
+    );
+  }
+
+  /* --------------------- TOP N por stock --------------------- */
+  async getTopStock(limit = 10) {
+    return this.articuloRepo
+      .createQueryBuilder('articulo')
+      .leftJoinAndSelect('articulo.proveedorPredeterminado', 'prov')
+      .orderBy('articulo.stockActual', 'DESC')
+      .limit(limit)
       .getMany();
   }
 
