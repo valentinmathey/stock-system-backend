@@ -17,6 +17,10 @@ import { Articulo } from 'src/articulo-proveedor/entities/articulo.entity';
 import { CreateVentaDto } from '../dto/venta/create-venta.dto';
 import { UpdateVentaDto } from '../dto/venta/update-venta.dto';
 import { InventarioService } from 'src/inventario/services/inventario.service';
+import { CreateOrdenCompraDto } from 'src/orden-compra/dto/ordencompra/create-orden-compra.dto';
+import { ArticuloProveedor } from 'src/articulo-proveedor/entities/articulo-proveedor.entity';
+import { OrdenCompra } from 'src/orden-compra/entities/orden-compra.entity';
+import { OrdenCompraService } from 'src/orden-compra/services/orden-compra.service';
 @Injectable()
 export class VentaService {
   /* Repositorios inyectados --------------------------------------- */
@@ -24,93 +28,160 @@ export class VentaService {
     @InjectRepository(Venta)
     private readonly ventaRepository: Repository<Venta>,
     private readonly dataSource: DataSource,
-    private readonly inventarioService: InventarioService,
+
+    @InjectRepository(ArticuloProveedor)
+    private readonly articuloProveedorRepo: Repository<ArticuloProveedor>,
+
+    private readonly ordenCompraService: OrdenCompraService,
   ) {}
 
   /* ---------------------------- CREATE --------------------------- */
   async create(data: CreateVentaDto) {
+    // Validación inicial ― debe haber al menos un detalle
     if (!data.detalle?.length) {
       throw new BadRequestException('Por favor enviar los artículos a vender');
     }
 
+    // Evitar artículos repetidos en la venta
     const ids = data.detalle.map((d) => d.articuloId);
-    const repetidos = ids.filter((id, index) => ids.indexOf(id) !== index);
+    const repetidos = ids.filter((id, i) => ids.indexOf(id) !== i);
     if (repetidos.length) {
       throw new BadRequestException(
         'Hay artículos repetidos en el detalle de la venta',
       );
     }
 
-    try {
-      const venta = await this.dataSource.transaction(async (manager) => {
-        const ventaRepo = manager.getRepository(Venta);
-        const articuloRepo = manager.getRepository(Articulo);
-        const detalleRepo = manager.getRepository(DetalleVenta);
+    // Transacción
+    return this.dataSource.transaction(async (manager) => {
+      /* ── Repositorios transaccionales ─────────────────────────── */
+      const ventaRepo = manager.getRepository(Venta);
+      const articuloRepo = manager.getRepository(Articulo);
+      const detalleRepo = manager.getRepository(DetalleVenta);
+      const ocRepo = manager.getRepository(OrdenCompra);
 
-        const venta = ventaRepo.create({
-          fechaVenta: data.fechaVenta ? new Date(data.fechaVenta) : undefined,
+      /* ── Cabecera de venta ────────────────────────────────────── */
+      const venta = ventaRepo.create({
+        fechaVenta: data.fechaVenta ? new Date(data.fechaVenta) : undefined,
+      });
+
+      let total = 0;
+      const detalles: DetalleVenta[] = [];
+
+      // Agruparemos artículos que necesitan OC → por proveedor
+      type ItemOC = { articulo: Articulo; cantidad: number };
+      const articulosParaOC = new Map<number, ItemOC[]>();
+
+      /* ── Iteramos cada ítem del detalle ───────────────────────── */
+      for (const d of data.detalle) {
+        // Buscar artículo con sus relaciones clave
+        const articulo = await articuloRepo.findOne({
+          where: { id: d.articuloId },
+          relations: ['proveedorPredeterminado', 'articulosProveedor'],
         });
 
-        const detalles = await Promise.all(
-          data.detalle.map(async (d) => {
-            const articulo = await articuloRepo.findOne({
-              where: { id: d.articuloId },
-            });
+        if (!articulo) {
+          throw new BadRequestException(
+            `Artículo con ID ${d.articuloId} no existe`,
+          );
+        }
 
-            if (!articulo) {
-              throw new BadRequestException(
-                `Artículo con ID ${d.articuloId} no existe`,
-              );
-            }
-            if (articulo.fechaBajaArticulo) {
-              throw new BadRequestException(
-                `El artículo ${articulo.nombreArticulo} está dado de baja`,
-              );
-            }
-            if (articulo.stockActual < d.cantidadArticulo) {
-              throw new BadRequestException(
-                `Stock insuficiente para el artículo ${articulo.nombreArticulo}`,
-              );
-            }
+        // No permitir venta de artículos dados de baja
+        if (articulo.fechaBajaArticulo) {
+          throw new BadRequestException(
+            `El artículo ${articulo.nombreArticulo} está dado de baja`,
+          );
+        }
 
-            articulo.stockActual -= d.cantidadArticulo;
-            await articuloRepo.save(articulo);
+        // Stock suficiente
+        if (articulo.stockActual < d.cantidadArticulo) {
+          throw new BadRequestException(
+            `Stock insuficiente para el artículo ${articulo.nombreArticulo}`,
+          );
+        }
 
-            const subtotal =
-              d.cantidadArticulo * articulo.precioVentaUnitarioArticulo;
+        // Sub-total y acumulado
+        const subtotal =
+          d.cantidadArticulo * articulo.precioVentaUnitarioArticulo;
+        total += subtotal;
 
-            return detalleRepo.create({
-              articulo,
-              cantidadArticulo: d.cantidadArticulo,
-              precioVentaUnitarioArticulo: articulo.precioVentaUnitarioArticulo,
-              ventaSubtotal: subtotal,
-            });
+        // Descontar stock
+        articulo.stockActual -= d.cantidadArticulo;
+        await articuloRepo.save(articulo);
+
+        // Crear detalle de venta
+        detalles.push(
+          detalleRepo.create({
+            articulo,
+            cantidadArticulo: d.cantidadArticulo,
+            precioVentaUnitarioArticulo: articulo.precioVentaUnitarioArticulo,
+            ventaSubtotal: subtotal,
           }),
         );
 
-        const detallesGuardados = await detalleRepo.save(detalles);
-        venta.detallesVenta = detallesGuardados;
-        venta.ventaTotal = this.getTotal(detallesGuardados);
+        /* ── ¿Disparar Orden de Compra automática? ──────────────── */
+        const artProv = await this.articuloProveedorRepo.findOne({
+          where: {
+            articulo: { id: articulo.id },
+            proveedor: { id: articulo.proveedorPredeterminado?.id },
+          },
+        });
 
-        // Lógica de OC dentro de la transacción para rollback si falla
-        await this.inventarioService.evaluarYPedirLoteFijo(
-          detallesGuardados.map((detalle) => detalle.articulo),
-          manager,
-        );
+        if (
+          artProv?.modeloInventario === 'LOTE_FIJO' &&
+          articulo.puntoPedido !== null &&
+          articulo.stockActual <= articulo.puntoPedido
+        ) {
+          // ¿Existe ya una OC pendiente o confirmada para este artículo?
+          const existeOC = await ocRepo
+            .createQueryBuilder('orden')
+            .innerJoin('orden.detallesOrden', 'detalle')
+            .innerJoin('orden.estado', 'estado')
+            .where('detalle.articulo = :articuloId', {
+              articuloId: articulo.id,
+            })
+            .andWhere('estado.codigoEstadoOrdenCompra IN (:...estados)', {
+              estados: ['PENDIENTE', 'CONFIRMADA'],
+            })
+            .getOne();
 
-        return await ventaRepo.save(venta);
-      });
+          // Si no hay OC activa:
+          if (!existeOC && articulo.proveedorPredeterminado) {
+            if (articulo.loteOptimo === null) {
+              throw new BadRequestException(
+                `Artículo ${articulo.nombreArticulo} no tiene lote óptimo configurado`,
+              );
+            }
 
-      return venta;
-    } catch (error) {
-      console.error('ERROR DETECTADO EN VENTA:', error);
-      if (error instanceof BadRequestException) {
-        throw error;
+            const provId = articulo.proveedorPredeterminado.id;
+            const arr = articulosParaOC.get(provId) ?? [];
+            arr.push({ articulo, cantidad: articulo.loteOptimo });
+            articulosParaOC.set(provId, arr);
+          }
+        }
       }
-      throw new InternalServerErrorException(
-        'Hubo un error inesperado al generar la venta.',
-      );
-    }
+
+      /* ── Guardamos la venta ───────────────────────────────────── */
+      venta.detallesVenta = detalles;
+      venta.ventaTotal = total;
+      const ventaGuardada = await ventaRepo.save(venta);
+
+      /* ── Generamos Orden(es) de Compra necesarias ─────────────── */
+      for (const [provId, items] of articulosParaOC.entries()) {
+        const dto: CreateOrdenCompraDto = {
+          proveedorId: provId,
+          fechaOrdenCompra: new Date().toISOString().split('T')[0],
+          detalles: items.map(({ articulo, cantidad }) => ({
+            articuloId: articulo.id,
+            cantidadArticulo: cantidad,
+          })),
+        };
+
+        // Servicio externo (fuera de la transacción)
+        await this.ordenCompraService.create(dto);
+      }
+
+      return ventaGuardada;
+    });
   }
 
   private getTotal(detalles: DetalleVenta[]) {
@@ -121,6 +192,9 @@ export class VentaService {
   findAll() {
     return this.ventaRepository.find({
       relations: ['detallesVenta', 'detallesVenta.articulo'],
+      order: {
+        fechaVenta: 'DESC',
+      },
     });
   }
 
