@@ -19,6 +19,7 @@ import { ProveedorController } from './controllers/proveedor.controller';
 import { ArticuloProveedorController } from './controllers/articulo-proveedor.controller';
 
 import { InventarioModule } from 'src/inventario/inventario.module';
+import { DetalleOrdenCompra } from 'src/orden-compra/entities/detalle-orden-compra.entity';
 
 @Module({
   imports: [
@@ -26,7 +27,8 @@ import { InventarioModule } from 'src/inventario/inventario.module';
       Articulo,
       Proveedor,
       ArticuloProveedor,
-      OrdenCompra, // necesario para reglas de negocio en ProveedorService
+      OrdenCompra, 
+      DetalleOrdenCompra,
     ]),
     forwardRef(() => InventarioModule), //Para evitar dependencia circular
   ],

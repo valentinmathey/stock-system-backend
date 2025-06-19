@@ -66,7 +66,9 @@ export class ArticuloController {
 
   /* --------------------------- DELETE ----------------------------- */
   @Delete(':id')
-  delete(@Query('id', ParseIntPipe) id: number) {
+  delete(
+    @Param('id', ParseIntPipe) id: number, 
+  ) {
     return this.articuloService.remove(id);
   }
 }

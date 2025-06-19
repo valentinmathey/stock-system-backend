@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Not, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Not, Repository } from 'typeorm';
 
 // ENTITIES ----------------------------------------------------------
 import { Proveedor } from '../entities/proveedor.entity';
@@ -15,10 +15,10 @@ import { OrdenCompra } from 'src/orden-compra/entities/orden-compra.entity';
 import { CreateProveedorDto } from '../dto/proveedor/create-proveedor.dto';
 import { UpdateProveedorDto } from '../dto/proveedor/update-proveedor.dto';
 import { ArticuloProveedorService } from './articulo-proveedor.service';
+import { Articulo } from '../entities/articulo.entity';
 
 @Injectable()
 export class ProveedorService {
-  /* Repositorios --------------------------------------- */
   constructor(
     @InjectRepository(Proveedor)
     private proveedorRepository: Repository<Proveedor>,
@@ -26,9 +26,11 @@ export class ProveedorService {
     @InjectRepository(OrdenCompra)
     private ordenCompraRepository: Repository<OrdenCompra>,
 
-    private readonly articuloProveedorService: ArticuloProveedorService,
+    @InjectRepository(Articulo)                        // ← nuevo
+    private articuloRepository: Repository<Articulo>, // ← nuevo
 
     private readonly dataSource: DataSource,
+    private readonly articuloProveedorService: ArticuloProveedorService,
   ) {}
 
   /* ---------------------------- CREATE --------------------------- */
@@ -86,9 +88,12 @@ export class ProveedorService {
   }
 
   /* ----------------------------- READ ---------------------------- */
-  findAll() {
-    return this.proveedorRepository.find();
-  }
+findAll() {
+  return this.proveedorRepository.find({
+    where: { fechaBajaProveedor: IsNull() },
+    order: { id: 'ASC' },
+  });
+}
 
   async findOne(id: number) {
     const prov = await this.proveedorRepository.findOneBy({ id });
@@ -105,11 +110,9 @@ export class ProveedorService {
       where: { id },
       relations: ['articulosProveedor'],
     });
-    if (!prov) {
-      throw new NotFoundException(`Proveedor con id ${id} no existe`);
-    }
+    if (!prov) throw new NotFoundException(`Proveedor con id ${id} no existe`);
 
-    // Verificar OC pendientes / enviadas ---------------------------
+    // 1) ódenes activas
     const ocActiva = await this.ordenCompraRepository.findOne({
       where: {
         proveedor: { id },
@@ -117,7 +120,7 @@ export class ProveedorService {
           nombreEstadoOrdenCompra: Not(In(['Finalizada', 'Cancelada'])),
         },
       },
-      relations: ['estado', 'proveedor'],
+      relations: ['estado'],
     });
     if (ocActiva) {
       throw new BadRequestException(
@@ -125,7 +128,22 @@ export class ProveedorService {
       );
     }
 
+    // 2) ser predeterminado en artículos
+    const cntPred = await this.articuloRepository.count({
+      where: {
+        proveedorPredeterminado: { id },
+        fechaBajaArticulo: IsNull(),
+      },
+    });
+    if (cntPred > 0) {
+      throw new BadRequestException(
+        'No se puede dar de baja: el proveedor es predeterminado de uno o más artículos.',
+      );
+    }
+
+    // 3) marcar baja
     prov.fechaBajaProveedor = new Date();
     return this.proveedorRepository.save(prov);
   }
 }
+
