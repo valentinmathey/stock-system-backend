@@ -5,7 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, IsNull, Repository } from 'typeorm';
+import { Brackets, IsNull, Not, Repository } from 'typeorm';
 
 // =========================== ENTIDADES ============================
 import { Articulo } from '../entities/articulo.entity';
@@ -149,11 +149,15 @@ export class ArticuloService {
   // Devuelve los proveedores asociados a un artículo
   async getProviders(id: number) {
     const art = await this.articuloRepo.findOne({
-      where: { id },
+      where: { id, fechaBajaArticulo: IsNull() },
       relations: ['articulosProveedor', 'articulosProveedor.proveedor'],
     });
 
-    return art?.articulosProveedor.map((ap) => ap.proveedor) || [];
+    return (
+      art?.articulosProveedor
+        .filter((ap) => ap.proveedor.fechaBajaProveedor === null)
+        .map((ap) => ap.proveedor) || []
+    );
   }
 
   // Devuelve artículos con stock actual menor o igual al stock de seguridad
@@ -161,6 +165,7 @@ export class ArticuloService {
     return this.articuloRepo
       .createQueryBuilder('articulo')
       .where('articulo.stockActual <= articulo.stockSeguridad')
+      .andWhere('articulo.fechaBajaArticulo IS NULL')
       .orderBy('articulo.stockActual', 'ASC')
       .addOrderBy('articulo.nombreArticulo', 'ASC')
       .getMany();
@@ -176,6 +181,7 @@ export class ArticuloService {
       .leftJoin(OrdenCompra, 'oc', 'oc.id = d.ordenCompraId')
       .leftJoin(EstadoOrdenCompra, 'e', 'e.id = oc.estadoId')
       .where('a.stockActual <= a.puntoPedido')
+      .andWhere('a.fechaBajaArticulo IS NULL')
       .andWhere(
         new Brackets((qb) =>
           qb
@@ -193,9 +199,18 @@ export class ArticuloService {
     return this.articuloRepo
       .createQueryBuilder('articulo')
       .leftJoinAndSelect('articulo.proveedorPredeterminado', 'prov')
+      .where('articulo.fechaBajaArticulo IS NULL')
       .orderBy('articulo.stockActual', 'DESC')
       .limit(limit)
       .getMany();
+  }
+
+  // Devuelve los artículos dados de baja
+  findBaja() {
+    return this.articuloRepo.find({
+      where: { fechaBajaArticulo: Not(IsNull()) },
+      order: { id: 'ASC' },
+    });
   }
 
   /* =========================== DELETE =========================== */

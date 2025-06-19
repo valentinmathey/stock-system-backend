@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 
 // =========================== ENTIDAD ==============================
 import { EstadoOrdenCompra } from '../entities/estado-orden-compra.entity';
@@ -25,6 +25,9 @@ export class EstadoOrdenCompraService {
 
   // Devuelve todos los estados de orden de compra
   findAll() {
-    return this.repo.find();
+    return this.repo.find({
+      where: { fechaBajaEstadoOrdenCompra: IsNull() },
+      order: { id: 'ASC' },
+    });
   }
 }

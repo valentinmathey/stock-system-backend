@@ -17,6 +17,7 @@ import { UpdateProveedorDto } from '../dto/proveedor/update-proveedor.dto';
 
 // ========================== SERVICIOS =============================
 import { ArticuloProveedorService } from './articulo-proveedor.service';
+import { ArticuloProveedor } from '../entities/articulo-proveedor.entity';
 
 // =========================== SERVICE ==============================
 @Injectable()
@@ -30,6 +31,9 @@ export class ProveedorService {
 
     @InjectRepository(Articulo)
     private articuloRepository: Repository<Articulo>,
+
+    @InjectRepository(ArticuloProveedor)
+    private readonly articuloProveedorRepo: Repository<ArticuloProveedor>,
 
     private readonly dataSource: DataSource,
     private readonly articuloProveedorService: ArticuloProveedorService,
@@ -65,7 +69,8 @@ export class ProveedorService {
           proveedorId: proveedorGuardado.id,
           modeloInventario: data.articulo.modeloInventario,
           costoPedido: data.articulo.costoPedido,
-          costoCompraUnitarioArticulo: data.articulo.costoCompraUnitarioArticulo,
+          costoCompraUnitarioArticulo:
+            data.articulo.costoCompraUnitarioArticulo,
           demoraEntregaProveedor: data.articulo.demoraEntregaProveedor,
           tiempoRevision: data.articulo.tiempoRevision,
         },
@@ -102,13 +107,40 @@ export class ProveedorService {
 
   // Devuelve un proveedor específico por ID
   async findOne(id: number) {
-    const prov = await this.proveedorRepository.findOneBy({ id });
+    const prov = await this.proveedorRepository.findOne({
+      where: { id, fechaBajaProveedor: IsNull() },
+    });
 
     if (!prov) {
       throw new NotFoundException(`Proveedor con id ${id} no existe`);
     }
 
     return prov;
+  }
+
+  // Devuelve la lista completa articulos por proveedor
+  async getArticulosByProveedor(proveedorId: number) {
+    const relaciones = await this.articuloProveedorRepo.find({
+      where: { proveedor: { id: proveedorId } },
+      relations: ['articulo'],
+    });
+
+    return relaciones
+      .filter((r) => r.articulo.fechaBajaArticulo === null)
+      .map((r) => ({
+        ...r.articulo,
+        modeloInventario: r.modeloInventario,
+      }));
+  }
+
+  // Devuelve los proveedores dados de baja
+  findDadoDeBaja() {
+    return this.proveedorRepository.find({
+      where: {
+        fechaBajaProveedor: Not(IsNull()),
+      },
+      order: { id: 'ASC' },
+    });
   }
 
   /* =========================== DELETE =========================== */

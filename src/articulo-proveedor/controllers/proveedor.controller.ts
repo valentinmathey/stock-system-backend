@@ -40,12 +40,25 @@ export class ProveedorController {
   findAll() {
     return this.proveedorService.findAll();
   }
+  
+  // Devuelve los proveedores dados de baja
+  @Get('baja')
+  findBaja() {
+    return this.proveedorService.findDadoDeBaja();
+  }
 
   // Devuelve un proveedor específico por ID
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.proveedorService.findOne(id);
   }
+
+  // Devuelve la lista completa articulos por proveedor
+  @Get(':id/articulos')
+  getArticulosDeProveedor(@Param('id', ParseIntPipe) id: number) {
+    return this.proveedorService.getArticulosByProveedor(id);
+  }
+
 
   /* --------------------------- DELETE ---------------------------- */
   @Delete(':id')

@@ -66,6 +66,12 @@ export class ArticuloController {
     return this.articuloService.getParaReponer();
   }
 
+  // Devuelve los artículos dados de baja
+  @Get('baja')
+  findArticulosDadosDeBaja() {
+    return this.articuloService.findBaja();
+  }
+
   /* --------------------------- DELETE ---------------------------- */
   @Delete(':id')
   delete(@Param('id', ParseIntPipe) id: number) {
