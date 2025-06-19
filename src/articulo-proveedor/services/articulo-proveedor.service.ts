@@ -1,4 +1,3 @@
-// DEPENDENCIES ------------------------------------------------------
 import {
   BadRequestException,
   HttpException,
@@ -8,36 +7,39 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 
-// ENTITY ------------------------------------------------------------
+// =========================== ENTIDADES ============================
 import {
   ArticuloProveedor,
   ModeloInventario,
 } from '../entities/articulo-proveedor.entity';
+import { Articulo } from '../entities/articulo.entity';
 
-// DTOs --------------------------------------------------------------
+// ============================== DTOs ==============================
 import { CreateArticuloProveedorDto } from '../dto/articuloproveedor/create-articulo-proveedor.dto';
 import { UpdateArticuloProveedorDto } from '../dto/articuloproveedor/update-articulo-proveedor.dto';
-import { Articulo } from '../entities/articulo.entity';
+
+// ========================== SERVICIOS =============================
 import { InventarioService } from 'src/inventario/services/inventario.service';
 
 @Injectable()
 export class ArticuloProveedorService {
-  /* Repositorio ---------------------------------------------------- */
+  /* ---------------------- Repositorios -------------------------- */
   constructor(
     @InjectRepository(ArticuloProveedor)
     private readonly repo: Repository<ArticuloProveedor>,
 
     @InjectRepository(Articulo)
     private readonly artRepo: Repository<Articulo>,
+
     private readonly inventarioService: InventarioService,
   ) {}
 
-  /* ---------------------------- CREATE --------------------------- */
+  /* ========================== CREATE ============================ */
+
+  // Crea una nueva relación usando repositorio opcional para transacciones
   async create(data: CreateArticuloProveedorDto, manager?: EntityManager) {
-    // Usamos el repositorio transaccional si se pasó un manager, o el repositorio por defecto
     const repo = manager ? manager.getRepository(ArticuloProveedor) : this.repo;
 
-    // Verificamos que no exista ya la relación artículo ↔ proveedor
     const existe = await repo.findOne({
       where: {
         articulo: { id: data.articuloId },
@@ -51,14 +53,12 @@ export class ArticuloProveedorService {
       );
     }
 
-    // Creamos la instancia con referencias por ID
     const nuevo = repo.create({
       ...data,
       articulo: { id: data.articuloId },
       proveedor: { id: data.proveedorId },
     });
 
-    // Calculamos la próxima fecha
     if (
       !nuevo.proximaFechaRevision &&
       nuevo.tiempoRevision !== null &&
@@ -69,32 +69,29 @@ export class ArticuloProveedorService {
       nuevo.proximaFechaRevision = hoy;
     }
 
-    // Guardamos la entidad
     const guardado = await repo.save(nuevo);
 
-    // Retornamos la entidad guardada con relaciones cargadas
     return repo.find({
       where: { id: guardado.id },
       relations: ['proveedor', 'articulo'],
     });
   }
 
-  /* ---------------------------- CREATE ARTICULO-PROVEEDOR --------------------------- */
+  // Crea relación desde formulario, lógica segun modelo de inventario)
   async createDesdeFormulario(data: CreateArticuloProveedorDto) {
-    // relación existente?
     const existe = await this.repo.findOne({
       where: {
         articulo: { id: data.articuloId },
         proveedor: { id: data.proveedorId },
       },
     });
+
     if (existe) {
       throw new BadRequestException(
         `Ya existe una relación entre el proveedor y ese artículo.`,
       );
     }
 
-    // Si es LOTE_FIJO, ignoramos tiempoRevision y proximaFechaRevision
     if (data.modeloInventario === ModeloInventario.LOTE_FIJO) {
       data.tiempoRevision = undefined;
       data.proximaFechaRevision = undefined;
@@ -106,7 +103,6 @@ export class ArticuloProveedorService {
       proveedor: { id: data.proveedorId },
     });
 
-    // calcular proximaFechaRevision solo para TIEMPO_FIJO
     if (
       nuevo.modeloInventario === ModeloInventario.TIEMPO_FIJO &&
       !nuevo.proximaFechaRevision &&
@@ -125,19 +121,22 @@ export class ArticuloProveedorService {
     });
   }
 
-  /* ---------------------------- UPDATE --------------------------- */
+  /* ========================== UPDATE ============================ */
+
+  // Actualiza una relación artículo-proveedor y recalcula inventario
   async update(id: number, data: UpdateArticuloProveedorDto) {
     const rel = await this.repo.findOne({
       where: { id },
       relations: ['articulo'],
     });
-    if (!rel)
+
+    if (!rel) {
       throw new HttpException(
         `Relación id ${id} no existe`,
         HttpStatus.BAD_REQUEST,
       );
+    }
 
-    /* ------ Normalizamos campos según el modelo ------ */
     if (data.modeloInventario === ModeloInventario.LOTE_FIJO) {
       data.tiempoRevision = null;
       data.proximaFechaRevision = null;
@@ -153,10 +152,8 @@ export class ArticuloProveedorService {
       data.proximaFechaRevision = hoy;
     }
 
-    /* ------  Actualizamos la relación ------ */
     await this.repo.update(id, data);
 
-    /* ------  Re-cálculo del artículo asociado ------ */
     const articulo = await this.artRepo.findOne({
       where: { id: rel.articulo.id },
       relations: ['proveedorPredeterminado'],
@@ -167,53 +164,58 @@ export class ArticuloProveedorService {
       await this.artRepo.save(articulo);
     }
 
-    /* ------  Devolvemos la relación actualizada ------ */
     return this.repo.findOne({
       where: { id },
       relations: ['articulo', 'proveedor'],
     });
   }
 
-  /* ----------------------------- READ ---------------------------- */
+  /* =========================== READ ============================= */
+
+  // Devuelve todas las relaciones con proveedor y artículo
   findAll() {
     return this.repo.find({ relations: ['articulo', 'proveedor'] });
   }
 
-  /* --------------------- READ: proveedores por artículo -------------------- */
+  // Devuelve los proveedores activos de un artículo
   async findProveedoresByArticulo(articuloId: number) {
     const relaciones = await this.repo.find({
-      where: { 
+      where: {
         articulo: { id: articuloId },
-        proveedor: { fechaBajaProveedor: IsNull() }, 
+        proveedor: { fechaBajaProveedor: IsNull() },
       },
       relations: ['proveedor'],
       select: {
         proveedor: {
           id: true,
           nombreProveedor: true,
-          
         },
       },
     });
 
-    // Mapeamos para devolver únicamente los datos del proveedor
     return relaciones.map((r) => r.proveedor);
   }
 
-  /* -------------- READ: relaciones completas por artículo ---------------- */
+  // Devuelve relaciones completas activas de un artículo
   async findRelacionesByArticulo(articuloId: number) {
     return this.repo.find({
-      where: { articulo: { id: articuloId } , proveedor: { fechaBajaProveedor: IsNull() },},
-      relations: ['proveedor'], // incluye todos los campos de proveedor
+      where: {
+        articulo: { id: articuloId },
+        proveedor: { fechaBajaProveedor: IsNull() },
+      },
+      relations: ['proveedor'],
       order: { id: 'ASC' },
     });
   }
 
-  /* -------------- READ: relaciones por proveedor -------------- */
+  // Devuelve relaciones activas de un proveedor
   async findRelacionesByProveedor(proveedorId: number) {
     return this.repo.find({
-      where: { proveedor: { id: proveedorId , fechaBajaProveedor: IsNull()}, articulo: { fechaBajaArticulo: IsNull() } },
-      relations: ['articulo'], // incluye el artículo para sacar su id
+      where: {
+        proveedor: { id: proveedorId, fechaBajaProveedor: IsNull() },
+        articulo: { fechaBajaArticulo: IsNull() },
+      },
+      relations: ['articulo'],
       order: { id: 'ASC' },
     });
   }

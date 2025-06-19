@@ -1,30 +1,30 @@
-// DEPENDENCIES ------------------------------------------------------
 import {
   BadRequestException,
   Injectable,
-  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 
-// ENTITIES ----------------------------------------------------------
+// ============================= ENTIDADES ==================================
 import { Venta } from '../entities/venta.entity';
 import { DetalleVenta } from '../entities/detalle-venta.entity';
 import { Articulo } from 'src/articulo-proveedor/entities/articulo.entity';
-
-// DTOs --------------------------------------------------------------
-import { CreateVentaDto } from '../dto/venta/create-venta.dto';
-import { UpdateVentaDto } from '../dto/venta/update-venta.dto';
-import { InventarioService } from 'src/inventario/services/inventario.service';
-import { CreateOrdenCompraDto } from 'src/orden-compra/dto/ordencompra/create-orden-compra.dto';
 import { ArticuloProveedor } from 'src/articulo-proveedor/entities/articulo-proveedor.entity';
 import { OrdenCompra } from 'src/orden-compra/entities/orden-compra.entity';
+
+// ================================ DTOs ====================================
+import { CreateVentaDto } from '../dto/venta/create-venta.dto';
+import { UpdateVentaDto } from '../dto/venta/update-venta.dto';
+import { CreateOrdenCompraDto } from 'src/orden-compra/dto/ordencompra/create-orden-compra.dto';
+
+// ============================= SERVICIOS =================================
 import { OrdenCompraService } from 'src/orden-compra/services/orden-compra.service';
+
 @Injectable()
 export class VentaService {
-  /* Repositorios inyectados --------------------------------------- */
   constructor(
+    /* -------------------- Repositorios inyectados ----------------- */
     @InjectRepository(Venta)
     private readonly ventaRepository: Repository<Venta>,
     private readonly dataSource: DataSource,
@@ -35,14 +35,15 @@ export class VentaService {
     private readonly ordenCompraService: OrdenCompraService,
   ) {}
 
-  /* ---------------------------- CREATE --------------------------- */
+  /* ============================= CREATE =============================== */
+
+  // Crea una venta, descuenta stock y genera orden de compra si es necesario
   async create(data: CreateVentaDto) {
-    // Validación inicial ― debe haber al menos un detalle
     if (!data.detalle?.length) {
       throw new BadRequestException('Por favor enviar los artículos a vender');
     }
 
-    // Evitar artículos repetidos en la venta
+    // Validación para evitar artículos repetidos
     const ids = data.detalle.map((d) => d.articuloId);
     const repetidos = ids.filter((id, i) => ids.indexOf(id) !== i);
     if (repetidos.length) {
@@ -51,15 +52,14 @@ export class VentaService {
       );
     }
 
-    // Transacción
     return this.dataSource.transaction(async (manager) => {
-      /* ── Repositorios transaccionales ─────────────────────────── */
+      // Repos transaccionales
       const ventaRepo = manager.getRepository(Venta);
       const articuloRepo = manager.getRepository(Articulo);
       const detalleRepo = manager.getRepository(DetalleVenta);
       const ocRepo = manager.getRepository(OrdenCompra);
 
-      /* ── Cabecera de venta ────────────────────────────────────── */
+      // Crear cabecera de venta
       const venta = ventaRepo.create({
         fechaVenta: data.fechaVenta ? new Date(data.fechaVenta) : undefined,
       });
@@ -67,13 +67,12 @@ export class VentaService {
       let total = 0;
       const detalles: DetalleVenta[] = [];
 
-      // Agruparemos artículos que necesitan OC → por proveedor
+      // Agrupar artículos para futuras órdenes de compra
       type ItemOC = { articulo: Articulo; cantidad: number };
       const articulosParaOC = new Map<number, ItemOC[]>();
 
-      /* ── Iteramos cada ítem del detalle ───────────────────────── */
+      // Iterar cada artículo del detalle
       for (const d of data.detalle) {
-        // Buscar artículo con sus relaciones clave
         const articulo = await articuloRepo.findOne({
           where: { id: d.articuloId },
           relations: ['proveedorPredeterminado', 'articulosProveedor'],
@@ -85,21 +84,21 @@ export class VentaService {
           );
         }
 
-        // No permitir venta de artículos dados de baja
+        // No permitir artículos dados de baja
         if (articulo.fechaBajaArticulo) {
           throw new BadRequestException(
             `El artículo ${articulo.nombreArticulo} está dado de baja`,
           );
         }
 
-        // Stock suficiente
+        // Validar stock suficiente
         if (articulo.stockActual < d.cantidadArticulo) {
           throw new BadRequestException(
             `Stock insuficiente para el artículo ${articulo.nombreArticulo}`,
           );
         }
 
-        // Sub-total y acumulado
+        // Calcular subtotal y actualizar total
         const subtotal =
           d.cantidadArticulo * articulo.precioVentaUnitarioArticulo;
         total += subtotal;
@@ -108,7 +107,7 @@ export class VentaService {
         articulo.stockActual -= d.cantidadArticulo;
         await articuloRepo.save(articulo);
 
-        // Crear detalle de venta
+        // Agregar detalle de venta
         detalles.push(
           detalleRepo.create({
             articulo,
@@ -118,7 +117,7 @@ export class VentaService {
           }),
         );
 
-        /* ── ¿Disparar Orden de Compra automática? ──────────────── */
+        // Verificar si se debe disparar OC automática
         const artProv = await this.articuloProveedorRepo.findOne({
           where: {
             articulo: { id: articulo.id },
@@ -131,7 +130,6 @@ export class VentaService {
           articulo.puntoPedido !== null &&
           articulo.stockActual <= articulo.puntoPedido
         ) {
-          // ¿Existe ya una OC pendiente o confirmada para este artículo?
           const existeOC = await ocRepo
             .createQueryBuilder('orden')
             .innerJoin('orden.detallesOrden', 'detalle')
@@ -144,7 +142,7 @@ export class VentaService {
             })
             .getOne();
 
-          // Si no hay OC activa:
+          // Si no hay OC activa y el artículo tiene proveedor predeterminado
           if (!existeOC && articulo.proveedorPredeterminado) {
             if (articulo.loteOptimo === null) {
               throw new BadRequestException(
@@ -160,12 +158,12 @@ export class VentaService {
         }
       }
 
-      /* ── Guardamos la venta ───────────────────────────────────── */
+      // Guardar venta y sus detalles
       venta.detallesVenta = detalles;
       venta.ventaTotal = total;
       const ventaGuardada = await ventaRepo.save(venta);
 
-      /* ── Generamos Orden(es) de Compra necesarias ─────────────── */
+      // Crear órdenes de compra necesarias
       for (const [provId, items] of articulosParaOC.entries()) {
         const dto: CreateOrdenCompraDto = {
           proveedorId: provId,
@@ -176,7 +174,6 @@ export class VentaService {
           })),
         };
 
-        // Servicio externo (fuera de la transacción)
         await this.ordenCompraService.create(dto);
       }
 
@@ -184,11 +181,9 @@ export class VentaService {
     });
   }
 
-  private getTotal(detalles: DetalleVenta[]) {
-    return detalles.reduce((prev, curr) => prev + curr.ventaSubtotal, 0);
-  }
+  /* ============================== READ ================================ */
 
-  /* ----------------------------- READ ---------------------------- */
+  // Devuelve todas las ventas con sus detalles y artículos relacionados
   findAll() {
     return this.ventaRepository.find({
       relations: ['detallesVenta', 'detallesVenta.articulo'],
@@ -198,6 +193,7 @@ export class VentaService {
     });
   }
 
+  // Devuelve una venta específica por ID
   async findOne(id: number) {
     const venta = await this.ventaRepository.findOne({
       where: { id },
@@ -209,7 +205,9 @@ export class VentaService {
     return venta;
   }
 
-  /* ---------------------------- UPDATE --------------------------- */
+  /* ============================= UPDATE ================================ */
+
+  // Actualiza una venta existente
   async update(id: number, data: UpdateVentaDto) {
     const venta = await this.ventaRepository.findOneBy({ id });
     if (!venta) {
@@ -220,7 +218,9 @@ export class VentaService {
     return this.ventaRepository.findOneBy({ id });
   }
 
-  /* ---------------------------- DELETE --------------------------- */
+  /* ============================= DELETE ================================ */
+
+  // Marca la venta como dada de baja lógicamente
   async delete(id: number) {
     const venta = await this.ventaRepository.findOneBy({ id });
     if (!venta) {

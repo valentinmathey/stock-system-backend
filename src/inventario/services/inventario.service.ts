@@ -1,7 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { log } from 'console';
 import {
   ArticuloProveedor,
   ModeloInventario,
@@ -11,6 +10,7 @@ import { CreateOrdenCompraDto } from 'src/orden-compra/dto/ordencompra/create-or
 import { OrdenCompraService } from 'src/orden-compra/services/orden-compra.service';
 import { EntityManager, Raw, Repository } from 'typeorm';
 
+// ============================ SERVICE ==============================
 @Injectable()
 export class InventarioService {
   constructor(
@@ -19,9 +19,9 @@ export class InventarioService {
     private ordenCompraService: OrdenCompraService,
   ) {}
 
-  // ------------ MODELO LOTE FIJO --------------------------------------
+  // ================== CÁLCULOS DE INVENTARIO ======================
 
-  // Calcula el punto de pedido basado en la demanda y el tiempo de entrega
+  // Calcula el Punto de Pedido para un artículo (modelo LOTE_FIJO)
   async calcularPuntoPedido(articulo: Articulo): Promise<number> {
     if (!articulo.proveedorPredeterminado) {
       console.log('No hay proveedor predeterminado');
@@ -49,6 +49,7 @@ export class InventarioService {
     );
   }
 
+  // Calcula el Lote Óptimo (modelo LOTE_FIJO)
   async calcularLoteOptimo(articulo: Articulo): Promise<number> {
     if (!articulo.proveedorPredeterminado) {
       console.log('No hay proveedor predeterminado');
@@ -75,6 +76,8 @@ export class InventarioService {
     }
     return Math.sqrt((2 * demanda * costoPedido) / costoMantenimiento);
   }
+
+  // Calcula el Costo Global de Inventario (CGI)
   async calcularCostoTotal(
     articulo: Articulo,
     artProv: ArticuloProveedor,
@@ -84,6 +87,7 @@ export class InventarioService {
     const costoPedido = artProv.costoPedido;
     const costoMantenimiento = articulo.costoAlmacenamientoPorUnidad;
 
+    // Para modelo LOTE_FIJO
     if (artProv.modeloInventario === ModeloInventario.LOTE_FIJO) {
       const lote = articulo.loteOptimo ?? 0;
       if (lote <= 0) {
@@ -98,19 +102,16 @@ export class InventarioService {
       );
     }
 
-    // -------- TIEMPO_FIJO ----------
-    //   CT = Costo de compra + Costo de mantenimiento sobre inventario máximo
+    // Para modelo TIEMPO_FIJO
     const inventarioMax = articulo.inventarioMaximo ?? 0;
     return demanda * costoUnidad + (inventarioMax / 2) * costoMantenimiento;
   }
 
-  /**
-   * @description Se activa todos los dias y trae los articulos que hay que pedir.
-   */
+  // ======================= CONTROL AUTOMÁTICO ========================
 
+  // Cron que se ejecuta cada día a las 10 AM y genera pedidos de modelo TIEMPO_FIJO
   @Cron(CronExpression.EVERY_DAY_AT_10AM)
   public async pedirPedidoFijo() {
-    // DUDA: PROVEDOR_PREDETERMINADO
     const artProv = await this.articuloProveedorRepo.find({
       where: {
         proximaFechaRevision: Raw((alias) => `${alias}::date = CURRENT_DATE`),
@@ -121,9 +122,7 @@ export class InventarioService {
     await this.generarPedido(articulos, ModeloInventario.TIEMPO_FIJO);
   }
 
-  /**
-   * @description Le pasamos articulos y si están bajo el Punto de Pedido, generamos OC.
-   */
+  // Evalúa si los artículos requieren generar OC y la crea si corresponde (modelo LOTE_FIJO)
   public async evaluarYPedirLoteFijo(
     articulos: Articulo[],
     manager?: EntityManager,
@@ -136,7 +135,7 @@ export class InventarioService {
           }
         }),
       )
-    ).filter((a) => a !== undefined);
+    ).filter((a): a is Articulo => a !== undefined);
 
     if (articuloAPedir.length === 0) {
       console.log('Los articulos evaluados no necesitan OC');
@@ -150,6 +149,7 @@ export class InventarioService {
     );
   }
 
+  // Verifica si un artículo está debajo del punto de pedido (modelo LOTE_FIJO)
   public async hayQuePedirLoteFijo(
     articulo: Articulo,
     manager?: EntityManager,
@@ -185,14 +185,12 @@ export class InventarioService {
     return posicionInventario <= articulo.puntoPedido;
   }
 
-  // --------- MODELO PEDIDO FIJO
-  // TODO
+   // (Pendiente de implementación) Para modelo TIEMPO_FIJO
   async calcularDemandaEsperada() {}
 
-  // -----------  PARA AMBOS MODELOS
-  /**
-   * @description Para la lista de articulos genera las OC con las cantidades correspondientes al modelo de inventario
-   */
+  // ======================== GENERADOR DE OC ==========================
+
+  // Arma y genera las OC agrupadas por proveedor
   private async generarPedido(
     articulos: Articulo[],
     modeloInventario: ModeloInventario,
@@ -242,7 +240,6 @@ export class InventarioService {
         })),
       };
 
-      // Ejecutar dentro de transacción si hay manager
       if (manager) {
         const ordenCompraService =
           manager.getCustomRepository?.(OrdenCompraService) ||
@@ -254,11 +251,9 @@ export class InventarioService {
     }
   }
 
-  // CALCULO GENERAL
+  // ===================== CALCULO GENERAL ===========================
 
-  /**
-   * @description Calcula y asigna lote óptimo, punto de pedido, inventario máximo y CGI al artículo, según el modelo de inventario.
-   */
+  // Asigna datos de inventario automáticamente según modelo de inventario
   async calcularYAsignarDatosInventario(articulo: Articulo): Promise<void> {
     if (!articulo.proveedorPredeterminado) {
       throw new InternalServerErrorException(
@@ -281,7 +276,7 @@ export class InventarioService {
 
     const demandaDiaria = articulo.demandaAnual / 365;
 
-    // Lote fijo
+    // Para modelo LOTE_FIJO
     if (artProv.modeloInventario === ModeloInventario.LOTE_FIJO) {
       const lote = await this.calcularLoteOptimo(articulo);
       const punto = await this.calcularPuntoPedido(articulo);
@@ -294,7 +289,7 @@ export class InventarioService {
       await this.articuloProveedorRepo.save(artProv);
     }
 
-    // Tiempo fijo
+    // Para modelo TIEMPO_FIJO
     if (artProv.modeloInventario === ModeloInventario.TIEMPO_FIJO) {
       if (!artProv.tiempoRevision) {
         throw new InternalServerErrorException(
