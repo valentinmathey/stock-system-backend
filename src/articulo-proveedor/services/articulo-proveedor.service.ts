@@ -6,7 +6,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 
 // ENTITY ------------------------------------------------------------
 import {
@@ -182,12 +182,16 @@ export class ArticuloProveedorService {
   /* --------------------- READ: proveedores por artículo -------------------- */
   async findProveedoresByArticulo(articuloId: number) {
     const relaciones = await this.repo.find({
-      where: { articulo: { id: articuloId } },
+      where: { 
+        articulo: { id: articuloId },
+        proveedor: { fechaBajaProveedor: IsNull() }, 
+      },
       relations: ['proveedor'],
       select: {
         proveedor: {
           id: true,
           nombreProveedor: true,
+          
         },
       },
     });
@@ -199,7 +203,7 @@ export class ArticuloProveedorService {
   /* -------------- READ: relaciones completas por artículo ---------------- */
   async findRelacionesByArticulo(articuloId: number) {
     return this.repo.find({
-      where: { articulo: { id: articuloId } },
+      where: { articulo: { id: articuloId } , proveedor: { fechaBajaProveedor: IsNull() },},
       relations: ['proveedor'], // incluye todos los campos de proveedor
       order: { id: 'ASC' },
     });
@@ -208,7 +212,7 @@ export class ArticuloProveedorService {
   /* -------------- READ: relaciones por proveedor -------------- */
   async findRelacionesByProveedor(proveedorId: number) {
     return this.repo.find({
-      where: { proveedor: { id: proveedorId } },
+      where: { proveedor: { id: proveedorId , fechaBajaProveedor: IsNull()}, articulo: { fechaBajaArticulo: IsNull() } },
       relations: ['articulo'], // incluye el artículo para sacar su id
       order: { id: 'ASC' },
     });

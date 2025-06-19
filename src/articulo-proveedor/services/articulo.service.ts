@@ -213,7 +213,7 @@ export class ArticuloService {
       );
     }
 
-    const estadosPendientes = ['PENDIENTE', 'ENVIADA'];
+    const estadosPendientes = ['PENDIENTE', 'CONFIRMADA'];
     const ocCount = await this.detOCRepo
       .createQueryBuilder('d')
       .innerJoin('d.ordenCompra', 'oc')
