@@ -65,7 +65,6 @@ export class ArticuloController {
   }
 
   /* --------------------------- DELETE ----------------------------- */
-  /* --------------------------- DELETE ----------------------------- */
   @Delete(':id')
   delete(
     @Param('id', ParseIntPipe) id: number, 
