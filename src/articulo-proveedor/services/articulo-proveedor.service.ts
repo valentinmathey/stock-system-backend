@@ -139,13 +139,14 @@ export class ArticuloProveedorService {
 
     /* ------ Normalizamos campos según el modelo ------ */
     if (data.modeloInventario === ModeloInventario.LOTE_FIJO) {
-      data.tiempoRevision = undefined;
-      data.proximaFechaRevision = undefined;
+      data.tiempoRevision = null;
+      data.proximaFechaRevision = null;
     }
 
     if (
       data.modeloInventario === ModeloInventario.TIEMPO_FIJO &&
-      data.tiempoRevision !== undefined
+      data.tiempoRevision !== undefined &&
+      data.tiempoRevision !== null
     ) {
       const hoy = new Date();
       hoy.setDate(hoy.getDate() + data.tiempoRevision);
@@ -163,7 +164,7 @@ export class ArticuloProveedorService {
 
     if (articulo) {
       await this.inventarioService.calcularYAsignarDatosInventario(articulo);
-      await this.artRepo.save(articulo); // guarda nuevo lote-pp-max-cgi
+      await this.artRepo.save(articulo);
     }
 
     /* ------  Devolvemos la relación actualizada ------ */

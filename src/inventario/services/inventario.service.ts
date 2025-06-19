@@ -287,9 +287,11 @@ export class InventarioService {
       const punto = await this.calcularPuntoPedido(articulo);
       articulo.loteOptimo = Math.round(lote);
       articulo.puntoPedido = Math.round(punto);
-      articulo.inventarioMaximo = Math.round(
-        articulo.loteOptimo + articulo.stockSeguridad,
-      );
+
+      articulo.inventarioMaximo = null;
+      artProv.tiempoRevision = null;
+      artProv.proximaFechaRevision = null;
+      await this.articuloProveedorRepo.save(artProv);
     }
 
     // Tiempo fijo
@@ -299,13 +301,12 @@ export class InventarioService {
           'Falta tiempo de revisión para modelo TIEMPO_FIJO',
         );
       }
-      articulo.loteOptimo = null;
-      const punto = await this.calcularPuntoPedido(articulo);
       const inventarioMax =
         demandaDiaria * artProv.tiempoRevision + articulo.stockSeguridad;
-
-      articulo.puntoPedido = Math.round(punto);
       articulo.inventarioMaximo = Math.round(inventarioMax);
+
+      articulo.loteOptimo = null;
+      articulo.puntoPedido = null;
     }
 
     // CGI aplica a ambos modelos
