@@ -30,6 +30,12 @@ export class ArticuloService {
     @InjectRepository(Proveedor)
     private readonly proveedorRepo: Repository<Proveedor>,
 
+    @InjectRepository(OrdenCompra)
+    private readonly ocRepo: Repository<OrdenCompra>,
+
+    @InjectRepository(DetalleOrdenCompra)
+    private readonly detOCRepo: Repository<DetalleOrdenCompra>,
+
     private readonly inventarioService: InventarioService,
   ) {}
 
@@ -149,36 +155,34 @@ export class ArticuloService {
 
   /* ---------- Extra: artículos con stock por debajo de seguridad - */
   getStockBajo() {
-  return this.articuloRepo
-    .createQueryBuilder('articulo')
-    .where('articulo.stockActual <= articulo.stockSeguridad')
-    .orderBy('articulo.stockActual', 'ASC')     
-    .addOrderBy('articulo.nombreArticulo', 'ASC') 
-    .getMany();
-}
+    return this.articuloRepo
+      .createQueryBuilder('articulo')
+      .where('articulo.stockActual <= articulo.stockSeguridad')
+      .orderBy('articulo.stockActual', 'ASC')
+      .addOrderBy('articulo.nombreArticulo', 'ASC')
+      .getMany();
+  }
 
   /* ---------- Extra: artículos que alcanzaron el punto de pedido y NO tienen OC pendientes --- */
   async getParaReponer() {
     const estadosPendientes = ['PENDIENTE', 'ENVIADA'];
 
-    return (
-      this.articuloRepo
-        .createQueryBuilder('a')
-        .leftJoin(DetalleOrdenCompra, 'd', 'd.articuloId = a.id')
-        .leftJoin(OrdenCompra, 'oc', 'oc.id = d.ordenCompraId')
-        .leftJoin(EstadoOrdenCompra, 'e', 'e.id = oc.estadoId')
-        .where('a.stockActual <= a.puntoPedido')
-        .andWhere(
-          new Brackets((qb) =>
-            qb
-              .where('oc.id IS NULL')
-              .orWhere('e.codigoEstadoOrdenCompra NOT IN (:...pend)', {
-                pend: estadosPendientes,
-              }),
-          ),
-        )
-        .getMany()
-    );
+    return this.articuloRepo
+      .createQueryBuilder('a')
+      .leftJoin(DetalleOrdenCompra, 'd', 'd.articuloId = a.id')
+      .leftJoin(OrdenCompra, 'oc', 'oc.id = d.ordenCompraId')
+      .leftJoin(EstadoOrdenCompra, 'e', 'e.id = oc.estadoId')
+      .where('a.stockActual <= a.puntoPedido')
+      .andWhere(
+        new Brackets((qb) =>
+          qb
+            .where('oc.id IS NULL')
+            .orWhere('e.codigoEstadoOrdenCompra NOT IN (:...pend)', {
+              pend: estadosPendientes,
+            }),
+        ),
+      )
+      .getMany();
   }
 
   /* --------------------- TOP N por stock --------------------- */
@@ -201,13 +205,37 @@ export class ArticuloService {
         HttpStatus.BAD_REQUEST,
       );
     }
+
     if (art.stockActual > 0) {
       throw new HttpException(
         `El artículo aún tiene stock`,
         HttpStatus.BAD_REQUEST,
       );
     }
-    // TODO: validar que no existan OC pendientes/enviadas relacionadas
+
+    const estadosPendientes = ['PENDIENTE', 'ENVIADA'];
+    const ocCount = await this.detOCRepo
+      .createQueryBuilder('d')
+      .innerJoin('d.ordenCompra', 'oc')
+      .innerJoin('oc.estado', 'e')
+      .where('d.articuloId = :id', { id })
+      .andWhere('e.codigoEstadoOrdenCompra IN (:...estados)', {
+        estados: estadosPendientes,
+      })
+      .getCount();
+
+    if (art.stockActual > 0) {
+      throw new BadRequestException(
+        'No se puede dar de baja: el artículo tiene unidades en stock',
+      );
+    }
+
+    if (ocCount > 0) {
+      throw new BadRequestException(
+        'No se puede dar de baja: existen órdenes de compra pendientes o enviadas',
+      );
+    }
+
     await this.articuloRepo.update(id, { fechaBajaArticulo: new Date() });
   }
 }

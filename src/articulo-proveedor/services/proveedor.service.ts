@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Not, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Not, Repository } from 'typeorm';
 
 // ENTITIES ----------------------------------------------------------
 import { Proveedor } from '../entities/proveedor.entity';
@@ -86,9 +86,12 @@ export class ProveedorService {
   }
 
   /* ----------------------------- READ ---------------------------- */
-  findAll() {
-    return this.proveedorRepository.find();
-  }
+findAll() {
+  return this.proveedorRepository.find({
+    where: { fechaBajaProveedor: IsNull() },
+    order: { id: 'ASC' },
+  });
+}
 
   async findOne(id: number) {
     const prov = await this.proveedorRepository.findOneBy({ id });
