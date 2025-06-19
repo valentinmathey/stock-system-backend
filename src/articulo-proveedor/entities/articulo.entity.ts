@@ -44,8 +44,8 @@ export class Articulo {
   @Column('int', { nullable: true })
   puntoPedido: number | null;
 
-  @Column('int')
-  inventarioMaximo: number;
+  @Column('int', { nullable: true })
+  inventarioMaximo: number | null;
 
   @Column('double precision')
   demandaAnual: number;

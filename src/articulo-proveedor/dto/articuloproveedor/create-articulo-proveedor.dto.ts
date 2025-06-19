@@ -22,8 +22,8 @@ export class CreateArticuloProveedorDto {
 
   @IsOptional()
   @IsInt()
-  tiempoRevision?: number;
+  tiempoRevision?: number | null;
 
   @IsOptional()
-  proximaFechaRevision?: Date;
+  proximaFechaRevision?: Date | null;
 }

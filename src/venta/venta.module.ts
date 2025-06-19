@@ -1,5 +1,5 @@
 // NEST CORE ---------------------------------------------------------
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 // ENTITIES ----------------------------------------------------------
@@ -15,12 +15,14 @@ import { VentaController } from './controllers/venta.controller';
 // MODULE DEPENDENCIES ----------------------------------------------
 import { ArticuloProveedorModule } from 'src/articulo-proveedor/articulo-proveedor.module';
 import { InventarioModule } from 'src/inventario/inventario.module';
+import { OrdenCompraModule } from 'src/orden-compra/orden-compra.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Venta, DetalleVenta]),
     ArticuloProveedorModule,
     InventarioModule,
+    forwardRef(() => OrdenCompraModule),
   ],
   controllers: [VentaController],
   providers: [VentaService],

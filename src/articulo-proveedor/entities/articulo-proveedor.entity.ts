@@ -35,10 +35,10 @@ export class ArticuloProveedor {
   demoraEntregaProveedor: number;
 
   @Column('int', { nullable: true })
-  tiempoRevision: number;
+  tiempoRevision: number | null;
 
   @Column('date', { nullable: true })
-  proximaFechaRevision: Date;
+  proximaFechaRevision: Date | null;
 
   @ManyToOne(() => Articulo, (articulo) => articulo.articulosProveedor)
   articulo: Articulo;
