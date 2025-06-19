@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 
 // =========================== ENTIDADES ============================
 import { OrdenCompra } from '../entities/orden-compra.entity';
@@ -132,9 +132,8 @@ export class OrdenCompraService {
     return this.ordenRepo.save(orden);
   }
 
-  
   // ============================ UPDATE ============================
-  
+
   /* Actualiza una orden de compra si está en estado pendiente */
   async update(id: number, dto: UpdateOrdenCompraDto) {
     const oc = await this.ordenRepo.findOne({
@@ -142,11 +141,11 @@ export class OrdenCompraService {
       relations: ['proveedor', 'estado', 'detallesOrden'],
     });
     if (!oc) throw new NotFoundException(`Orden con id ${id} no encontrada`);
-    
+
     if (oc.estado.codigoEstadoOrdenCompra !== 'PENDIENTE') {
       throw new BadRequestException('Solo se puede modificar una OC pendiente');
     }
-    
+
     if (dto.proveedorId) {
       const proveedor = await this.proveedorRepo.findOneBy({
         id: dto.proveedorId,
@@ -160,21 +159,21 @@ export class OrdenCompraService {
       if (!estado) throw new BadRequestException('Estado no válido');
       oc.estado = estado;
     }
-    
+
     if (dto.detalles) {
       await this.detalleRepo.delete({ ordenCompra: { id: oc.id } });
-      
+
       let costoPedidoTotal = 0;
       let costoCompraTotal = 0;
       const nuevosDetalles: DetalleOrdenCompra[] = [];
-      
+
       for (const d of dto.detalles) {
         const articulo = await this.articuloRepo.findOneBy({
           id: d.articuloId,
         });
         if (!articulo)
           throw new NotFoundException(`Artículo ${d.articuloId} no encontrado`);
-        
+
         const artProv = await this.articuloProveedorRepo.findOne({
           where: {
             articulo: { id: articulo.id },
@@ -183,88 +182,102 @@ export class OrdenCompraService {
         });
         if (!artProv)
           throw new NotFoundException(
-        `Relación Artículo-Proveedor inexistente para "${articulo.nombreArticulo}"`,
-      );
-      
-      const costoPedido = artProv.costoPedido;
-      const costoCompra = artProv.costoCompraUnitarioArticulo;
-      
-      const detalle = this.detalleRepo.create({
-        articulo,
-        cantidadArticulo: d.cantidadArticulo,
-        costoPedidoSubtotal: costoPedido,
-        costoCompraUnitarioArticulo: costoCompra,
-        costoCompraSubtotal: d.cantidadArticulo * costoCompra,
-      });
-      
-      costoPedidoTotal += costoPedido;
-      costoCompraTotal += detalle.costoCompraSubtotal;
-      nuevosDetalles.push(detalle);
+            `Relación Artículo-Proveedor inexistente para "${articulo.nombreArticulo}"`,
+          );
+
+        const costoPedido = artProv.costoPedido;
+        const costoCompra = artProv.costoCompraUnitarioArticulo;
+
+        const detalle = this.detalleRepo.create({
+          articulo,
+          cantidadArticulo: d.cantidadArticulo,
+          costoPedidoSubtotal: costoPedido,
+          costoCompraUnitarioArticulo: costoCompra,
+          costoCompraSubtotal: d.cantidadArticulo * costoCompra,
+        });
+
+        costoPedidoTotal += costoPedido;
+        costoCompraTotal += detalle.costoCompraSubtotal;
+        nuevosDetalles.push(detalle);
+      }
+
+      oc.detallesOrden = nuevosDetalles;
+      oc.costoPedidoTotal = costoPedidoTotal;
+      oc.costoCompraTotal = costoCompraTotal;
+      oc.costoTotal = costoPedidoTotal + costoCompraTotal;
     }
-    
-    oc.detallesOrden = nuevosDetalles;
-    oc.costoPedidoTotal = costoPedidoTotal;
-    oc.costoCompraTotal = costoCompraTotal;
-    oc.costoTotal = costoPedidoTotal + costoCompraTotal;
-  }
-  
-  if (dto.fechaOrdenCompra) {
-    oc.fechaOrdenCompra = new Date(dto.fechaOrdenCompra);
-  }
-  
-  return this.ordenRepo.save(oc);
-}
 
-// ============================ READ ==============================
+    if (dto.fechaOrdenCompra) {
+      oc.fechaOrdenCompra = new Date(dto.fechaOrdenCompra);
+    }
 
-/* Devuelve todas las órdenes de compra con sus relaciones */
-findAll() {
-  return this.ordenRepo.find({
-    relations: [
-      'proveedor',
-      'estado',
-      'detallesOrden',
-      'detallesOrden.articulo',
-    ],
-    order: { fechaOrdenCompra: 'DESC' },
-  });
-}
-
-/* Devuelve una orden de compra específica por ID */
-async findOne(id: number) {
-  const orden = await this.ordenRepo.findOne({
-    where: { id },
-    relations: [
-      'proveedor',
-      'estado',
-      'detallesOrden',
-      'detallesOrden.articulo',
-    ],
-  });
-
-  if (!orden) {
-    throw new NotFoundException(`Orden de compra con ID ${id} no encontrada`);
+    return this.ordenRepo.save(oc);
   }
 
-  return orden;
-}
+  // ============================ READ ==============================
 
-// ============================ DELETE ============================
+  /* Devuelve todas las órdenes de compra con sus relaciones */
+  findAll() {
+    return this.ordenRepo.find({
+      where: {
+        fechaBajaOrdenCompra: IsNull(),
+        estado: {
+          fechaBajaEstadoOrdenCompra: IsNull(),
+        },
+      },
+      relations: [
+        'proveedor',
+        'estado',
+        'detallesOrden',
+        'detallesOrden.articulo',
+      ],
+      order: { fechaOrdenCompra: 'DESC' },
+    });
+  }
 
-/* Baja lógica: marca fecha de baja si la OC está pendiente */
-async delete(id: number) {
-  const oc = await this.ordenRepo.findOne({
-    where: { id },
-    relations: ['estado'],
-  });
-  
-  if (!oc)
-    throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
-  
-  if (oc.estado.codigoEstadoOrdenCompra !== 'PENDIENTE') {
-    throw new BadRequestException(
-      'Solo se puede modificar/cancelar una OC pendiente',
-    );
+  /* Devuelve una orden de compra específica por ID */
+  async findOne(id: number) {
+    const orden = await this.ordenRepo.findOne({
+      where: {
+        id,
+        fechaBajaOrdenCompra: IsNull(),
+        estado: {
+          fechaBajaEstadoOrdenCompra: IsNull(),
+        },
+      },
+      relations: [
+        'proveedor',
+        'estado',
+        'detallesOrden',
+        'detallesOrden.articulo',
+      ],
+    });
+
+    if (!orden) {
+      throw new NotFoundException(
+        `Orden de compra con ID ${id} no encontrada o fue dada de baja`,
+      );
+    }
+
+    return orden;
+  }
+
+  // ============================ DELETE ============================
+
+  /* Baja lógica: marca fecha de baja si la OC está pendiente */
+  async delete(id: number) {
+    const oc = await this.ordenRepo.findOne({
+      where: { id },
+      relations: ['estado'],
+    });
+
+    if (!oc)
+      throw new NotFoundException(`Orden de compra con id ${id} no encontrada`);
+
+    if (oc.estado.codigoEstadoOrdenCompra !== 'PENDIENTE') {
+      throw new BadRequestException(
+        'Solo se puede modificar/cancelar una OC pendiente',
+      );
     }
 
     oc.fechaBajaOrdenCompra = new Date();

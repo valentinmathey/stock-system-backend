@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 
 // ============================= ENTIDADES ==================================
 import { Venta } from '../entities/venta.entity';
@@ -186,6 +186,7 @@ export class VentaService {
   // Devuelve todas las ventas con sus detalles y artículos relacionados
   findAll() {
     return this.ventaRepository.find({
+      where: { fechaBajaVenta: IsNull() },
       relations: ['detallesVenta', 'detallesVenta.articulo'],
       order: {
         fechaVenta: 'DESC',
@@ -196,12 +197,19 @@ export class VentaService {
   // Devuelve una venta específica por ID
   async findOne(id: number) {
     const venta = await this.ventaRepository.findOne({
-      where: { id },
+      where: {
+        id,
+        fechaBajaVenta: IsNull(),
+      },
       relations: ['detallesVenta', 'detallesVenta.articulo'],
     });
+
     if (!venta) {
-      throw new NotFoundException(`Venta con ID ${id} no encontrada`);
+      throw new NotFoundException(
+        `Venta con ID ${id} no encontrada o fue dada de baja`,
+      );
     }
+
     return venta;
   }
 
