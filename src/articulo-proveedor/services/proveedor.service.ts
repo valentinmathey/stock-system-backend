@@ -117,7 +117,7 @@ findAll() {
       where: {
         proveedor: { id },
         estado: {
-          nombreEstadoOrdenCompra: Not(In(['Finalizada', 'Cancelada'])),
+          codigoEstadoOrdenCompra: Not(In(['FINALIZADA', 'CANCELADA'])),
         },
       },
       relations: ['estado'],
