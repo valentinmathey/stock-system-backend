@@ -1,4 +1,3 @@
-// DEPENDENCIES ------------------------------------------------------
 import {
   Controller,
   Get,
@@ -16,7 +15,7 @@ import { UpdateArticuloProveedorDto } from '../dto/articuloproveedor/update-arti
 
 @Controller('articulos-proveedores')
 export class ArticuloProveedorController {
-  /* DI ------------------------------------------------------------- */
+  /* -------------------- Inyección de Servicio -------------------- */
   constructor(private readonly service: ArticuloProveedorService) {}
 
   /* -------------------------- CREATE ----------------------------- */
@@ -34,13 +33,15 @@ export class ArticuloProveedorController {
     return this.service.update(id, data);
   }
 
-  /* --------------------------- READ ------------------------------ */
+  /* ---------------------------- READ ----------------------------- */
+  
+  // Obtiene todas las relaciones artículo-proveedor
   @Get()
   findAll() {
     return this.service.findAll();
   }
 
-  /* ----------- READ: proveedores válidos para un artículo ---------------- */
+  // Devuelve los proveedores asociados a un artículo
   @Get('proveedores-por-articulo/:articuloId')
   findProveedoresPorArticulo(
     @Param('articuloId', ParseIntPipe) articuloId: number,
@@ -48,6 +49,7 @@ export class ArticuloProveedorController {
     return this.service.findProveedoresByArticulo(articuloId);
   }
 
+  // Devuelve todas las relaciones de un artículo (con proveedores)
   @Get('por-articulo/:articuloId')
   findRelacionesPorArticulo(
     @Param('articuloId', ParseIntPipe) articuloId: number,
@@ -55,6 +57,7 @@ export class ArticuloProveedorController {
     return this.service.findRelacionesByArticulo(articuloId);
   }
 
+  // Devuelve todas las relaciones de un proveedor (con artículos)
   @Get('por-proveedor/:proveedorId')
   findRelacionesPorProveedor(
     @Param('proveedorId', ParseIntPipe) proveedorId: number,

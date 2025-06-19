@@ -1,4 +1,3 @@
-// DEPENDENCIES ------------------------------------------------------
 import {
   Controller,
   Get,
@@ -16,27 +15,16 @@ import { UpdateProveedorDto } from '../dto/proveedor/update-proveedor.dto';
 
 @Controller('proveedores')
 export class ProveedorController {
-  /* DI ------------------------------------------------------------- */
+  /* -------------------- Inyección de Servicio -------------------- */
   constructor(private readonly proveedorService: ProveedorService) {}
 
-  /* --------------------------- CREATE ----------------------------- */
+  /* --------------------------- CREATE ---------------------------- */
   @Post()
   create(@Body() dto: CreateProveedorDto) {
     return this.proveedorService.create(dto);
   }
 
-  /* ---------------------------- READ ------------------------------ */
-  @Get()
-  findAll() {
-    return this.proveedorService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.proveedorService.findOne(id);
-  }
-
-  /* --------------------------- UPDATE ----------------------------- */
+  /* --------------------------- UPDATE ---------------------------- */
   @Put(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -45,7 +33,21 @@ export class ProveedorController {
     return this.proveedorService.update(id, dto);
   }
 
-  /* --------------------------- DELETE ----------------------------- */
+  /* ---------------------------- READ ----------------------------- */
+
+  // Devuelve la lista completa de proveedores
+  @Get()
+  findAll() {
+    return this.proveedorService.findAll();
+  }
+
+  // Devuelve un proveedor específico por ID
+  @Get(':id')
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.proveedorService.findOne(id);
+  }
+
+  /* --------------------------- DELETE ---------------------------- */
   @Delete(':id')
   delete(@Param('id', ParseIntPipe) id: number) {
     return this.proveedorService.delete(id);

@@ -1,4 +1,3 @@
-// DEPENDENCIES ------------------------------------------------------
 import {
   Controller,
   Get,
@@ -16,33 +15,36 @@ import { UpdateVentaDto } from '../dto/venta/update-venta.dto';
 
 @Controller('ventas')
 export class VentaController {
-  /* DI ------------------------------------------------------------- */
+  /* -------------------- Inyección de Servicio -------------------- */
   constructor(private readonly service: VentaService) {}
 
-  /* --------------------------- CREATE ----------------------------- */
+  /* --------------------------- CREATE ---------------------------- */
   @Post()
   create(@Body() dto: CreateVentaDto) {
     return this.service.create(dto);
   }
 
-  /* ---------------------------- READ ------------------------------ */
-  @Get()
-  findAll() {
-    return this.service.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findOne(id);
-  }
-
-  /* --------------------------- UPDATE ----------------------------- */
+  /* --------------------------- UPDATE ---------------------------- */
   @Put(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateVentaDto) {
     return this.service.update(id, dto);
   }
 
-  /* --------------------------- DELETE ----------------------------- */
+  /* ---------------------------- READ ----------------------------- */
+
+  // Devuelve la lista de todas las ventas
+  @Get()
+  findAll() {
+    return this.service.findAll();
+  }
+
+  // Devuelve una venta específica por ID
+  @Get(':id')
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findOne(id);
+  }
+
+  /* --------------------------- DELETE ---------------------------- */
   @Delete(':id')
   delete(@Param('id', ParseIntPipe) id: number) {
     return this.service.delete(id);
