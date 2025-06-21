@@ -185,7 +185,7 @@ export class InventarioService {
     return posicionInventario <= articulo.puntoPedido;
   }
 
-   // (Pendiente de implementación) Para modelo TIEMPO_FIJO
+  // (Pendiente de implementación) Para modelo TIEMPO_FIJO
   async calcularDemandaEsperada() {}
 
   // ======================== GENERADOR DE OC ==========================
