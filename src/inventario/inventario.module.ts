@@ -10,12 +10,14 @@ import { InventarioService } from './services/inventario.service';
 
 // ======================= MÓDULOS EXTERNOS =========================
 import { OrdenCompraModule } from 'src/orden-compra/orden-compra.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 // ========================== MÓDULO ================================
 @Module({
   /* ------------ Entidades y módulos importados ------------------ */
   imports: [
     TypeOrmModule.forFeature([ArticuloProveedor]),
+    ScheduleModule.forRoot(),
     forwardRef(() => OrdenCompraModule), // evita el bucle de dependencias
   ],
 

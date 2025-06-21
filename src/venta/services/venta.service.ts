@@ -20,6 +20,7 @@ import { CreateOrdenCompraDto } from 'src/orden-compra/dto/ordencompra/create-or
 
 // ============================= SERVICIOS =================================
 import { OrdenCompraService } from 'src/orden-compra/services/orden-compra.service';
+import { InventarioService } from 'src/inventario/services/inventario.service';
 
 @Injectable()
 export class VentaService {
@@ -28,7 +29,7 @@ export class VentaService {
     @InjectRepository(Venta)
     private readonly ventaRepository: Repository<Venta>,
     private readonly dataSource: DataSource,
-
+    private readonly inventarioService: InventarioService,
     @InjectRepository(ArticuloProveedor)
     private readonly articuloProveedorRepo: Repository<ArticuloProveedor>,
 
@@ -117,65 +118,68 @@ export class VentaService {
           }),
         );
 
-        // Verificar si se debe disparar OC automática
-        const artProv = await this.articuloProveedorRepo.findOne({
-          where: {
-            articulo: { id: articulo.id },
-            proveedor: { id: articulo.proveedorPredeterminado?.id },
-          },
-        });
+        // // Verificar si se debe disparar OC automática
+        // const artProv = await this.articuloProveedorRepo.findOne({
+        //   where: {
+        //     articulo: { id: articulo.id },
+        //     proveedor: { id: articulo.proveedorPredeterminado?.id },
+        //   },
+        // });
 
-        if (
-          artProv?.modeloInventario === 'LOTE_FIJO' &&
-          articulo.puntoPedido !== null &&
-          articulo.stockActual <= articulo.puntoPedido
-        ) {
-          const existeOC = await ocRepo
-            .createQueryBuilder('orden')
-            .innerJoin('orden.detallesOrden', 'detalle')
-            .innerJoin('orden.estado', 'estado')
-            .where('detalle.articulo = :articuloId', {
-              articuloId: articulo.id,
-            })
-            .andWhere('estado.codigoEstadoOrdenCompra IN (:...estados)', {
-              estados: ['PENDIENTE', 'CONFIRMADA'],
-            })
-            .getOne();
+        // if (
+        //   artProv?.modeloInventario === 'LOTE_FIJO' &&
+        //   articulo.puntoPedido !== null &&
+        //   articulo.stockActual <= articulo.puntoPedido
+        // ) {
+        //   const existeOC = await ocRepo
+        //     .createQueryBuilder('orden')
+        //     .innerJoin('orden.detallesOrden', 'detalle')
+        //     .innerJoin('orden.estado', 'estado')
+        //     .where('detalle.articulo = :articuloId', {
+        //       articuloId: articulo.id,
+        //     })
+        //     .andWhere('estado.codigoEstadoOrdenCompra IN (:...estados)', {
+        //       estados: ['PENDIENTE', 'CONFIRMADA'],
+        //     })
+        //     .getOne();
 
-          // Si no hay OC activa y el artículo tiene proveedor predeterminado
-          if (!existeOC && articulo.proveedorPredeterminado) {
-            if (articulo.loteOptimo === null) {
-              throw new BadRequestException(
-                `Artículo ${articulo.nombreArticulo} no tiene lote óptimo configurado`,
-              );
-            }
+        //   // Si no hay OC activa y el artículo tiene proveedor predeterminado
+        //   if (!existeOC && articulo.proveedorPredeterminado) {
+        //     if (articulo.loteOptimo === null) {
+        //       throw new BadRequestException(
+        //         `Artículo ${articulo.nombreArticulo} no tiene lote óptimo configurado`,
+        //       );
+        //     }
 
-            const provId = articulo.proveedorPredeterminado.id;
-            const arr = articulosParaOC.get(provId) ?? [];
-            arr.push({ articulo, cantidad: articulo.loteOptimo });
-            articulosParaOC.set(provId, arr);
-          }
-        }
+        //     const provId = articulo.proveedorPredeterminado.id;
+        //     const arr = articulosParaOC.get(provId) ?? [];
+        //     arr.push({ articulo, cantidad: articulo.loteOptimo });
+        //     articulosParaOC.set(provId, arr);
+        //   }
+        // }
       }
 
       // Guardar venta y sus detalles
       venta.detallesVenta = detalles;
       venta.ventaTotal = total;
       const ventaGuardada = await ventaRepo.save(venta);
+      await this.inventarioService.evaluarYPedirLoteFijo(
+        venta.detallesVenta.map((detalle) => detalle.articulo),
+        manager,
+      );
+      // // Crear órdenes de compra necesarias
+      // for (const [provId, items] of articulosParaOC.entries()) {
+      //   const dto: CreateOrdenCompraDto = {
+      //     proveedorId: provId,
+      //     fechaOrdenCompra: new Date().toISOString().split('T')[0],
+      //     detalles: items.map(({ articulo, cantidad }) => ({
+      //       articuloId: articulo.id,
+      //       cantidadArticulo: cantidad,
+      //     })),
+      //   };
 
-      // Crear órdenes de compra necesarias
-      for (const [provId, items] of articulosParaOC.entries()) {
-        const dto: CreateOrdenCompraDto = {
-          proveedorId: provId,
-          fechaOrdenCompra: new Date().toISOString().split('T')[0],
-          detalles: items.map(({ articulo, cantidad }) => ({
-            articuloId: articulo.id,
-            cantidadArticulo: cantidad,
-          })),
-        };
-
-        await this.ordenCompraService.create(dto);
-      }
+      //   await this.ordenCompraService.create(dto);
+      // }
 
       return ventaGuardada;
     });

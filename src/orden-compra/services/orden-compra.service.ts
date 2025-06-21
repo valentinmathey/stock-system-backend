@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 
 // =========================== ENTIDADES ============================
 import { OrdenCompra } from '../entities/orden-compra.entity';
@@ -15,7 +15,10 @@ import { DetalleOrdenCompra } from '../entities/detalle-orden-compra.entity';
 import { Articulo } from 'src/articulo-proveedor/entities/articulo.entity';
 import { EstadoOrdenCompra } from '../entities/estado-orden-compra.entity';
 import { Proveedor } from 'src/articulo-proveedor/entities/proveedor.entity';
-import { ArticuloProveedor } from 'src/articulo-proveedor/entities/articulo-proveedor.entity';
+import {
+  ArticuloProveedor,
+  ModeloInventario,
+} from 'src/articulo-proveedor/entities/articulo-proveedor.entity';
 
 // ========================== SERVICIO ==============================
 @Injectable()
@@ -39,7 +42,22 @@ export class OrdenCompraService {
   // =========================== CREATE =============================
 
   /* Crea una nueva orden de compra y sus detalles */
-  async create(data: CreateOrdenCompraDto) {
+  async create(data: CreateOrdenCompraDto, manager?: EntityManager) {
+    let ordenRepo = this.ordenRepo;
+    let detalleRepo = this.detalleRepo;
+    let articuloRepo = this.articuloRepo;
+    let estadoRepo = this.estadoRepo;
+    let proveedorRepo = this.proveedorRepo;
+    let articuloProveedorRepo = this.articuloProveedorRepo;
+    if (manager) {
+      ordenRepo = manager.getRepository(OrdenCompra);
+      detalleRepo = manager.getRepository(DetalleOrdenCompra);
+      articuloRepo = manager.getRepository(Articulo);
+      estadoRepo = manager.getRepository(EstadoOrdenCompra);
+      proveedorRepo = manager.getRepository(Proveedor);
+      articuloProveedorRepo = manager.getRepository(ArticuloProveedor);
+    }
+
     // Validación de proveedor
     const proveedor = await this.proveedorRepo.findOneBy({
       id: data.proveedorId,
@@ -118,7 +136,7 @@ export class OrdenCompraService {
         costoPedidoSubtotal: costoPedido,
         costoCompraSubtotal: d.cantidadArticulo * costoCompra,
       });
-
+      await this.actualizarProximaRevision(artProv);
       costoPedidoTotal += costoPedido;
       costoCompraTotal += detalle.costoCompraSubtotal;
       detalles.push(detalle);
@@ -131,7 +149,26 @@ export class OrdenCompraService {
 
     return this.ordenRepo.save(orden);
   }
-
+  private async actualizarProximaRevision(
+    articuloProveedor: ArticuloProveedor,
+  ) {
+    if (articuloProveedor.modeloInventario === ModeloInventario.LOTE_FIJO) {
+      return;
+    }
+    if (!articuloProveedor.tiempoRevision) {
+      console.error(
+        'No se puede actualizar proxima fecha de revision porque tiempoRevision no ha sido seteado.',
+      );
+      return;
+    }
+    const prox = new Date();
+    prox.setDate(prox.getDate() + articuloProveedor.tiempoRevision);
+    const nuevoArtProv = this.articuloProveedorRepo.create({
+      ...articuloProveedor,
+      proximaFechaRevision: prox,
+    });
+    const actualizado = await this.articuloProveedorRepo.save(nuevoArtProv);
+  }
   // ============================ UPDATE ============================
 
   /* Actualiza una orden de compra si está en estado pendiente */
@@ -354,13 +391,26 @@ export class OrdenCompraService {
       where: { nombreEstadoOrdenCompra: 'PENDIENTE' },
     });
 
-    if (!ordenCompraPendiente) throw new InternalServerErrorException();
+    if (!ordenCompraPendiente)
+      throw new InternalServerErrorException(
+        'Estado de Orden de Compra "PENDIENTE" no fue encontrado',
+      );
 
     const oc = await this.ordenRepo
-      .createQueryBuilder()
+      .createQueryBuilder('orden')
       .innerJoin('orden.estado', 'estado')
-      .innerJoin('orden.detallesOrden', 'detalle')
-      .innerJoin('detalle.articulo', 'articulo')
+      .innerJoinAndMapMany(
+        'orden.detallesOrden',
+        DetalleOrdenCompra,
+        'detalleOc',
+        'detalleOc.ordenCompra.id = orden.id',
+      )
+      .innerJoinAndMapMany(
+        'detalleOc.articulo',
+        Articulo,
+        'articulo',
+        'detalleOc.articulo.id = articulo.id',
+      )
       .where('estado.id = :estadoId', { estadoId: ordenCompraPendiente.id })
       .andWhere('estado.codigoEstadoOrdenCompra IN (:...estados)', {
         estados: ['PENDIENTE', 'FINALIZADA'],

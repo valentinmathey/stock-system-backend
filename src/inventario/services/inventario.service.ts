@@ -6,9 +6,11 @@ import {
   ModeloInventario,
 } from 'src/articulo-proveedor/entities/articulo-proveedor.entity';
 import { Articulo } from 'src/articulo-proveedor/entities/articulo.entity';
+import { Proveedor } from 'src/articulo-proveedor/entities/proveedor.entity';
 import { CreateOrdenCompraDto } from 'src/orden-compra/dto/ordencompra/create-orden-compra.dto';
+import { OrdenCompra } from 'src/orden-compra/entities/orden-compra.entity';
 import { OrdenCompraService } from 'src/orden-compra/services/orden-compra.service';
-import { EntityManager, Raw, Repository } from 'typeorm';
+import { EntityManager, Equal, Raw, Repository } from 'typeorm';
 
 // ============================ SERVICE ==============================
 @Injectable()
@@ -24,7 +26,7 @@ export class InventarioService {
   // Calcula el Punto de Pedido para un artículo (modelo LOTE_FIJO)
   async calcularPuntoPedido(articulo: Articulo): Promise<number> {
     if (!articulo.proveedorPredeterminado) {
-      console.log('No hay proveedor predeterminado');
+      console.warn('No hay proveedor predeterminado');
       return 0;
     }
     const artProv = await this.articuloProveedorRepo.findOne({
@@ -52,7 +54,7 @@ export class InventarioService {
   // Calcula el Lote Óptimo (modelo LOTE_FIJO)
   async calcularLoteOptimo(articulo: Articulo): Promise<number> {
     if (!articulo.proveedorPredeterminado) {
-      console.log('No hay proveedor predeterminado');
+      console.warn('No hay proveedor predeterminado');
       return 0;
     }
     const artProv = await this.articuloProveedorRepo.findOne({
@@ -110,16 +112,44 @@ export class InventarioService {
   // ======================= CONTROL AUTOMÁTICO ========================
 
   // Cron que se ejecuta cada día a las 10 AM y genera pedidos de modelo TIEMPO_FIJO
-  @Cron(CronExpression.EVERY_DAY_AT_10AM)
+  @Cron(CronExpression.EVERY_10_SECONDS)
   public async pedirPedidoFijo() {
-    const artProv = await this.articuloProveedorRepo.find({
-      where: {
-        proximaFechaRevision: Raw((alias) => `${alias}::date = CURRENT_DATE`),
-      },
-      relations: ['articulo'],
-    });
+    console.log(
+      'CRON PARA GENERAR OC PARA ARTICULOS DE TIEMPO FIJO HA EMPEZADO',
+    );
+    const artProv = await this.articuloProveedorRepo
+      .createQueryBuilder('artProv')
+      .innerJoinAndMapOne(
+        'artProv.articulo',
+        Articulo,
+        'ar',
+        'artProv.articulo.id = ar.id',
+      )
+      .innerJoinAndMapOne(
+        'ar.proveedorPredeterminado',
+        Proveedor,
+        'prov',
+        'ar.proveedorPredeterminado.id = prov.id',
+      )
+      .where('artProv.proximaFechaRevision = :hoy', { hoy: new Date() })
+      .getMany();
+
     const articulos = artProv.map((artProv) => artProv.articulo);
-    await this.generarPedido(articulos, ModeloInventario.TIEMPO_FIJO);
+    if (!articulos.length) {
+      console.log('No hay ordenes de compras para crear.');
+      return;
+    }
+    const ordenesCreadas = await this.generarPedido(
+      articulos,
+      ModeloInventario.TIEMPO_FIJO,
+    );
+    if (ordenesCreadas.length) {
+      console.log('ORDENES DE COMPRA HAN SIDO CREADAS');
+      console.log(JSON.stringify(ordenesCreadas, null, 2));
+
+      return;
+    }
+    console.log('NINGUNA ORDEN FUE CREADA.');
   }
 
   // Evalúa si los artículos requieren generar OC y la crea si corresponde (modelo LOTE_FIJO)
@@ -208,7 +238,7 @@ export class InventarioService {
 
     articulos.forEach((articulo) => {
       if (!articulo.proveedorPredeterminado) {
-        console.log('No hay proveedor predeterminado');
+        console.warn('No hay proveedor predeterminado');
         return 0;
       }
       const provId = articulo.proveedorPredeterminado.id;
@@ -217,11 +247,14 @@ export class InventarioService {
           `Lote Óptimo no existente o igual a cero para el artículo ${articulo.id} ${articulo.nombreArticulo}`,
         );
       }
-
-      const cantidad =
-        sonLoteFijo && articulo.loteOptimo
-          ? articulo.loteOptimo
-          : Math.abs(articulo.stockActual - articulo.stockSeguridad);
+      let cantidad = 0;
+      if (sonLoteFijo && articulo.loteOptimo) {
+        cantidad = articulo.loteOptimo;
+      } else if (!sonLoteFijo) {
+        if (articulo.inventarioMaximo) {
+          cantidad = Math.abs(articulo.inventarioMaximo - articulo.stockActual);
+        }
+      }
 
       if (!articulosParaOC.has(provId)) {
         articulosParaOC.set(provId, [{ articulo, cantidad }]);
@@ -229,7 +262,7 @@ export class InventarioService {
         articulosParaOC.get(provId)!.push({ articulo, cantidad });
       }
     });
-
+    let ordenesCompraCreadas: OrdenCompra[] = [];
     for (const [provId, articulos] of articulosParaOC.entries()) {
       const dto: CreateOrdenCompraDto = {
         proveedorId: provId,
@@ -240,15 +273,10 @@ export class InventarioService {
         })),
       };
 
-      if (manager) {
-        const ordenCompraService =
-          manager.getCustomRepository?.(OrdenCompraService) ||
-          this.ordenCompraService;
-        await ordenCompraService.create(dto);
-      } else {
-        await this.ordenCompraService.create(dto);
-      }
+      const ocCreada = await this.ordenCompraService.create(dto, manager);
+      ordenesCompraCreadas.push(ocCreada);
     }
+    return ordenesCompraCreadas;
   }
 
   // ===================== CALCULO GENERAL ===========================
@@ -296,9 +324,9 @@ export class InventarioService {
           'Falta tiempo de revisión para modelo TIEMPO_FIJO',
         );
       }
-      const inventarioMax =
-        demandaDiaria * artProv.tiempoRevision + articulo.stockSeguridad;
-      articulo.inventarioMaximo = Math.round(inventarioMax);
+      // const inventarioMax =
+      //   demandaDiaria * artProv.tiempoRevision + articulo.stockSeguridad;
+      // articulo.inventarioMaximo = Math.round(inventarioMax);
 
       articulo.loteOptimo = null;
       articulo.puntoPedido = null;
