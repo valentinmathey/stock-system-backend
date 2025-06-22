@@ -13,8 +13,11 @@ import {
 import { OrdenCompraService } from '../services/orden-compra.service';
 import { CreateOrdenCompraDto } from '../dto/ordencompra/create-orden-compra.dto';
 import { UpdateOrdenCompraDto } from '../dto/ordencompra/update-orden-compra.dto';
+import { ApiExtraModels, ApiOkResponse, getSchemaPath } from '@nestjs/swagger';
+import { GetOrdenCompraDto } from '../dto/ordencompra/get-orden-compra.dto';
 
 @Controller('ordenes-compra')
+@ApiExtraModels(GetOrdenCompraDto)
 export class OrdenCompraController {
   /* -------------------- Inyección de Servicio -------------------- */
   constructor(private readonly ordenCompraService: OrdenCompraService) {}
@@ -26,15 +29,24 @@ export class OrdenCompraController {
   }
 
   /* ---------------------------- READ ----------------------------- */
-  
+
   // Devuelve la lista de todas las órdenes de compra
   @Get()
+  @ApiOkResponse({
+    schema: {
+      type: 'array',
+      items: { $ref: getSchemaPath(GetOrdenCompraDto) },
+    },
+  })
   findAll() {
     return this.ordenCompraService.findAll();
   }
-  
+
   // Devuelve una orden de compra específica por ID
   @Get(':id')
+  @ApiOkResponse({
+    schema: { $ref: getSchemaPath(GetOrdenCompraDto) },
+  })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.ordenCompraService.findOne(id);
   }
@@ -61,7 +73,7 @@ export class OrdenCompraController {
   confirmar(@Param('id', ParseIntPipe) id: number) {
     return this.ordenCompraService.confirmar(id);
   }
-  
+
   /* --------------------------- DELETE ---------------------------- */
   @Delete(':id')
   delete(@Param('id', ParseIntPipe) id: number) {
