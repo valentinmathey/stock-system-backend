@@ -50,11 +50,14 @@ export class Articulo {
   @Column('double precision')
   demandaAnual: number;
 
+  @Column('int', { nullable: true })
+  variacionDemanda: number | null;
+
   @Column({ type: 'date', nullable: true })
   fechaBajaArticulo: Date;
 
   // RELACIONES
-  @ManyToOne(() => Proveedor,{nullable: true})
+  @ManyToOne(() => Proveedor, { nullable: true })
   @JoinColumn()
   proveedorPredeterminado: Proveedor | null;
 

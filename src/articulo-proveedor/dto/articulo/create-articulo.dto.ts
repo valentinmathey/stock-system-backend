@@ -6,6 +6,7 @@ import {
   IsInt,
   IsDateString,
 } from 'class-validator';
+import { Column } from 'typeorm';
 
 export class CreateArticuloDto {
   @IsString()
@@ -37,17 +38,17 @@ export class CreateArticuloDto {
   @IsInt()
   stockSeguridad: number;
 
-  @ApiProperty()
+  @ApiProperty({ nullable: true })
   @IsOptional()
   @IsNumber()
   cgi?: number;
 
-  @ApiProperty()
+  @ApiProperty({ nullable: true })
   @IsOptional()
   @IsInt()
   loteOptimo?: number;
 
-  @ApiProperty()
+  @ApiProperty({ nullable: true })
   @IsOptional()
   @IsInt()
   puntoPedido?: number;
@@ -62,11 +63,14 @@ export class CreateArticuloDto {
   demandaAnual: number;
 
   @ApiProperty()
+  variacionDemanda: number;
+
+  @ApiProperty({ nullable: true })
   @IsOptional()
   @IsDateString()
   fechaBajaArticulo?: string;
 
-  @ApiProperty()
+  @ApiProperty({ nullable: true })
   @IsInt()
   @IsOptional()
   proveedorPredeterminadoId?: number;

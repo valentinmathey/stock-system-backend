@@ -283,21 +283,22 @@ export class InventarioService {
   /**
    * Fórmula: z * σ * sqrt(T + L)
    */
-  public calcularStockSeguridadConstante(
-    artProv: ArticuloProveedor,
-  ): number {
+  public calcularStockSeguridadConstante(artProv: ArticuloProveedor): number {
     const zTable = {
       0.9: 1.2816,
       0.95: 1.6449,
       0.98: 2.0537,
       0.99: 2.3263,
     };
-    const z = zTable[0.95 as keyof typeof zTable];
-    if (!z) {
-      throw new InternalServerErrorException('Nivel de confianza no soportado');
-    }
-    const sigmaDiaria = 5;
-    const stockSeguridad = z * sigmaDiaria * Math.sqrt(artProv.demoraEntregaProveedor + (artProv.tiempoRevision || 0));
+
+    const z = zTable[0.95];
+
+    const variacionDemanda = artProv.articulo.variacionDemanda ?? 0;
+    const stockSeguridad =
+      z *
+      variacionDemanda *
+      Math.sqrt(artProv.demoraEntregaProveedor + (artProv.tiempoRevision || 0));
+
     return Math.ceil(stockSeguridad);
   }
 
@@ -316,8 +317,8 @@ export class InventarioService {
         articulo: { id: articulo.id },
         proveedor: { id: articulo.proveedorPredeterminado.id },
       },
+      relations: ['articulo'],
     });
-
     if (!artProv) {
       throw new InternalServerErrorException(
         'No se encontró la relación Articulo-Proveedor para el proveedor predeterminado',
@@ -327,9 +328,8 @@ export class InventarioService {
     const demandaDiaria = articulo.demandaAnual / 365;
 
     //stock de seguridad para ambos modelos
-    const stockSeguridadCalculado = this.calcularStockSeguridadConstante(
-      artProv,
-    );
+    const stockSeguridadCalculado =
+      this.calcularStockSeguridadConstante(artProv);
     articulo.stockSeguridad = stockSeguridadCalculado;
 
     // Para modelo LOTE_FIJO
