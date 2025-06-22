@@ -324,9 +324,9 @@ export class InventarioService {
           'Falta tiempo de revisión para modelo TIEMPO_FIJO',
         );
       }
-      // const inventarioMax =
-      //   demandaDiaria * artProv.tiempoRevision + articulo.stockSeguridad;
-      // articulo.inventarioMaximo = Math.round(inventarioMax);
+      const inventarioMax =
+      demandaDiaria * artProv.tiempoRevision + articulo.stockSeguridad;
+      articulo.inventarioMaximo = Math.round(inventarioMax);
 
       articulo.loteOptimo = null;
       articulo.puntoPedido = null;

@@ -53,6 +53,7 @@ export class CreateArticuloDto {
   puntoPedido?: number;
 
   @ApiProperty()
+  @IsOptional()
   @IsInt()
   inventarioMaximo: number;
 
