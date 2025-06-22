@@ -1,32 +1,44 @@
 import {
-  IsNumber,
-  IsInt,
-  IsDateString,
-  IsOptional,
   IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
 } from 'class-validator';
 import { ModeloInventario } from '../../entities/articulo-proveedor.entity';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateArticuloProveedorDto {
-  @IsInt()
+  @ApiProperty()
+  @IsNotEmpty()
   articuloId: number;
 
-  @IsInt()
+  @ApiProperty()
+  @IsNotEmpty()
   proveedorId: number;
 
+  @ApiProperty()
+  @IsEnum(ModeloInventario)
+  modeloInventario: ModeloInventario;
+
+  @ApiProperty()
   @IsNumber()
   costoPedido: number;
 
+  @ApiProperty()
   @IsNumber()
   costoCompraUnitarioArticulo: number;
 
+  @ApiProperty()
   @IsInt()
   demoraEntregaProveedor: number;
 
+  @ApiProperty({ nullable: true })
   @IsOptional()
   @IsInt()
-  tiempoRevision: number;
+  tiempoRevision?: number | null;
+
+  @ApiProperty({ nullable: true })
   @IsOptional()
-  @IsEnum(ModeloInventario)
-  modeloInvenatario: ModeloInventario;
+  proximaFechaRevision?: Date | null;
 }

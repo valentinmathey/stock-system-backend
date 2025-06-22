@@ -1,54 +1,29 @@
 import {
-  IsString,
-  IsDateString,
-  IsNumber,
-  IsInt,
+  IsArray,
   ValidateNested,
-  ArrayNotEmpty,
+  IsInt,
+  IsDateString,
+  ArrayMinSize,
+  IsOptional,
+  IsString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { CreateDetalleOrdenDto } from '../detalleordencompra/create-detalle-orden.dto';
+import { ApiProperty, PartialType } from '@nestjs/swagger';
 
 export class CreateOrdenCompraDto {
-  @IsString()
-  codigoOrdenCompra: string;
-
-  @IsDateString()
-  fechaOrdenCompra: string;
-
-  @IsNumber()
-  costoPedidoTotal: number;
-
-  @IsNumber()
-  costoCompraTotal: number;
-
-  @IsNumber()
-  costoTotal: number;
-
   @IsInt()
+  @ApiProperty()
   proveedorId: number;
 
-  @IsInt()
-  estadoId: number;
+  @IsDateString()
+  @ApiProperty()
+  fechaOrdenCompra: string;
 
-  @ArrayNotEmpty()
+  @ApiProperty({ type: [CreateDetalleOrdenDto] })
+  @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => CreateDetalleOrdenCompraDto)
-  detalles: CreateDetalleOrdenCompraDto[];
-}
-
-export class CreateDetalleOrdenCompraDto {
-  @IsInt()
-  articuloId: number;
-
-  @IsInt()
-  cantidadArticulo: number;
-
-  @IsNumber()
-  costoCompraUnitarioArticulo: number;
-
-  @IsNumber()
-  costoPedidoSubtotal: number;
-
-  @IsNumber()
-  costoCompraSubtotal: number;
+  @Type(() => CreateDetalleOrdenDto)
+  detalles: CreateDetalleOrdenDto[];
 }

@@ -1,30 +1,36 @@
-// NEST CORE ---------------------------------------------------------
-import { Module } from '@nestjs/common';
+// ======================= MÓDULOS NEST =============================
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-// ENTITIES ----------------------------------------------------------
+// ========================= ENTIDADES ==============================
 import { Venta } from './entities/venta.entity';
 import { DetalleVenta } from './entities/detalle-venta.entity';
 
-// SERVICES ----------------------------------------------------------
+// ========================= SERVICIOS ==============================
 import { VentaService } from './services/venta.service';
-import { DetalleVentaService } from './services/detalle-venta.service';
 
-// CONTROLLER --------------------------------------------------------
+// ======================== CONTROLADORES ===========================
 import { VentaController } from './controllers/venta.controller';
 
-// MODULE DEPENDENCIES ----------------------------------------------
+// ======================= MÓDULOS EXTERNOS =========================
 import { ArticuloProveedorModule } from 'src/articulo-proveedor/articulo-proveedor.module';
+import { InventarioModule } from 'src/inventario/inventario.module';
+import { OrdenCompraModule } from 'src/orden-compra/orden-compra.module';
 
+// ========================== MÓDULO ================================
 @Module({
+  /* ------------ Entidades y módulos importados ------------------ */
   imports: [
-    /* Repositorios locales */
     TypeOrmModule.forFeature([Venta, DetalleVenta]),
-
-    /* Acceso a servicios / repos de Artículo y Proveedor */
     ArticuloProveedorModule,
+    InventarioModule,
+    forwardRef(() => OrdenCompraModule), // evita dependencia circular
   ],
+
+  /* ------------------- Controladores declarados ------------------ */
   controllers: [VentaController],
-  providers: [VentaService, DetalleVentaService],
+
+  /* -------------------- Servicios disponibles -------------------- */
+  providers: [VentaService],
 })
 export class VentaModule {}

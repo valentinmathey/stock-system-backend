@@ -7,46 +7,76 @@ import {
   Param,
   Delete,
   ParseIntPipe,
+  Patch,
 } from '@nestjs/common';
 
 import { OrdenCompraService } from '../services/orden-compra.service';
 import { CreateOrdenCompraDto } from '../dto/ordencompra/create-orden-compra.dto';
 import { UpdateOrdenCompraDto } from '../dto/ordencompra/update-orden-compra.dto';
+import { ApiExtraModels, ApiOkResponse, getSchemaPath } from '@nestjs/swagger';
+import { GetOrdenCompraDto } from '../dto/ordencompra/get-orden-compra.dto';
 
 @Controller('ordenes-compra')
+@ApiExtraModels(GetOrdenCompraDto)
 export class OrdenCompraController {
-  /* DI --------------------------- */
-  constructor(private readonly service: OrdenCompraService) {}
+  /* -------------------- Inyección de Servicio -------------------- */
+  constructor(private readonly ordenCompraService: OrdenCompraService) {}
 
-  /* -------------------------- CREATE ----------------------------- */
+  /* --------------------------- CREATE ---------------------------- */
   @Post()
   create(@Body() dto: CreateOrdenCompraDto) {
-    return this.service.create(dto);
+    return this.ordenCompraService.create(dto);
   }
 
-  /* --------------------------- READ ------------------------------ */
+  /* ---------------------------- READ ----------------------------- */
+
+  // Devuelve la lista de todas las órdenes de compra
   @Get()
+  @ApiOkResponse({
+    schema: {
+      type: 'array',
+      items: { $ref: getSchemaPath(GetOrdenCompraDto) },
+    },
+  })
   findAll() {
-    return this.service.findAll();
+    return this.ordenCompraService.findAll();
   }
 
+  // Devuelve una orden de compra específica por ID
   @Get(':id')
+  @ApiOkResponse({
+    schema: { $ref: getSchemaPath(GetOrdenCompraDto) },
+  })
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findOne(id);
+    return this.ordenCompraService.findOne(id);
   }
 
-  /* -------------------------- UPDATE ----------------------------- */
+  /* --------------------------- UPDATE ---------------------------- */
+
+  // Actualiza una orden de compra por ID
   @Put(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOrdenCompraDto,
   ) {
-    return this.service.update(id, dto);
+    return this.ordenCompraService.update(id, dto);
   }
 
-  /* -------------------------- DELETE ----------------------------- */
+  // Marca una orden de compra como finalizada
+  @Patch(':id/finalizar')
+  finalizar(@Param('id', ParseIntPipe) id: number) {
+    return this.ordenCompraService.finalizar(id);
+  }
+
+  // Confirma una orden de compra
+  @Patch(':id/confirmar')
+  confirmar(@Param('id', ParseIntPipe) id: number) {
+    return this.ordenCompraService.confirmar(id);
+  }
+
+  /* --------------------------- DELETE ---------------------------- */
   @Delete(':id')
   delete(@Param('id', ParseIntPipe) id: number) {
-    return this.service.delete(id);
+    return this.ordenCompraService.delete(id);
   }
 }
